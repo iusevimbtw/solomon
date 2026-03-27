@@ -37,6 +37,108 @@ describe("solomon.utils", function()
     end)
   end)
 
+  describe("format_context with surrounding", function()
+    it("includes markers and surrounding lines", function()
+      local lines = { "return x + y" }
+      local surrounding = {
+        above = { "function add(x, y)" },
+        below = { "end" },
+      }
+      local result = utils.format_context(lines, "lua", "math.lua", 2, surrounding)
+      assert.truthy(result:find("SELECTED CODE"))
+      assert.truthy(result:find("END SELECTED CODE"))
+      assert.truthy(result:find("function add"))
+      assert.truthy(result:find("return x + y", 1, true))
+      assert.truthy(result:find("end", 1, true))
+      assert.truthy(result:find("do not modify it"))
+    end)
+
+    it("works with only above context", function()
+      local lines = { "last_line()" }
+      local surrounding = { above = { "first_line()", "middle()" }, below = {} }
+      local result = utils.format_context(lines, "lua", "f.lua", 3, surrounding)
+      assert.truthy(result:find("SELECTED CODE"))
+      assert.truthy(result:find("first_line"))
+      assert.truthy(result:find("last_line"))
+    end)
+
+    it("works with only below context", function()
+      local lines = { "top()" }
+      local surrounding = { above = {}, below = { "bottom()" } }
+      local result = utils.format_context(lines, "lua", "f.lua", 1, surrounding)
+      assert.truthy(result:find("SELECTED CODE"))
+      assert.truthy(result:find("bottom"))
+    end)
+
+    it("falls back to plain format when no surrounding", function()
+      local result = utils.format_context({ "code" }, "lua", "f.lua", 1, nil)
+      assert.is_falsy(result:find("SELECTED CODE"))
+      assert.truthy(result:find("```lua"))
+    end)
+
+    it("falls back to plain format when surrounding is empty", function()
+      local result = utils.format_context({ "code" }, "lua", "f.lua", 1, { above = {}, below = {} })
+      assert.is_falsy(result:find("SELECTED CODE"))
+    end)
+  end)
+
+  describe("get_surrounding_context", function()
+    local bufnr
+
+    before_each(function()
+      bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+        "line 1",   -- 1
+        "line 2",   -- 2
+        "line 3",   -- 3
+        "line 4",   -- 4
+        "line 5",   -- 5
+        "line 6",   -- 6
+        "line 7",   -- 7
+        "line 8",   -- 8
+        "line 9",   -- 9
+        "line 10",  -- 10
+      })
+    end)
+
+    after_each(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+    end)
+
+    it("returns lines above and below selection with fallback padding", function()
+      -- Select lines 5-6, no treesitter → 15-line fallback (clamped to buffer)
+      local ctx = utils.get_surrounding_context(bufnr, 5, 6)
+      assert.is_true(#ctx.above > 0)
+      assert.is_true(#ctx.below > 0)
+      -- Above should be lines 1-4
+      assert.equals(4, #ctx.above)
+      assert.equals("line 1", ctx.above[1])
+      -- Below should be lines 7-10
+      assert.equals(4, #ctx.below)
+      assert.equals("line 10", ctx.below[4])
+    end)
+
+    it("clamps to buffer start", function()
+      local ctx = utils.get_surrounding_context(bufnr, 1, 2)
+      assert.equals(0, #ctx.above)
+      assert.is_true(#ctx.below > 0)
+    end)
+
+    it("clamps to buffer end", function()
+      local ctx = utils.get_surrounding_context(bufnr, 9, 10)
+      assert.is_true(#ctx.above > 0)
+      assert.equals(0, #ctx.below)
+    end)
+
+    it("returns empty when selection covers entire buffer", function()
+      local ctx = utils.get_surrounding_context(bufnr, 1, 10)
+      assert.equals(0, #ctx.above)
+      assert.equals(0, #ctx.below)
+    end)
+  end)
+
   describe("read_claude_md", function()
     local tmpdir
     local orig_cwd

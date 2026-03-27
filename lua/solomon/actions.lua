@@ -91,8 +91,9 @@ function M._open_prompt(selection, action, source)
 			if action.inline and action.prompt_template then
 				-- Inline prompt: build full prompt, then execute inline with spinner
 				local utils = require("solomon.utils")
+				local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
 				local context_str_full =
-					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
+					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
 				local project_context = M._build_project_context()
 				local diagnostics = M._build_diagnostics_context(source)
 				local full_prompt = action.prompt_template
@@ -116,8 +117,9 @@ end
 ---@param source table
 function M._execute(selection, action, extra_prompt, source)
 	local utils = require("solomon.utils")
+	local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
 	local context_str =
-		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
+		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
 
 	local project_context = M._build_project_context()
 	local diagnostics = M._build_diagnostics_context(source)
@@ -145,8 +147,9 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	if pre_built_prompt then
 		full_prompt = pre_built_prompt
 	else
+		local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
 		local context_str =
-			utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
+			utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
 		local project_context = M._build_project_context()
 		local diagnostics = M._build_diagnostics_context(source)
 		full_prompt = action.prompt_template

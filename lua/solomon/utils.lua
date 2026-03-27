@@ -47,16 +47,94 @@ function M.get_buffer_info()
   }
 end
 
+--- Get surrounding context for a selection using treesitter or line fallback.
+---@param bufnr integer
+---@param start_line integer 1-indexed
+---@param end_line integer 1-indexed
+---@return {above: string[], below: string[]}
+function M.get_surrounding_context(bufnr, start_line, end_line)
+  local total_lines = vim.api.nvim_buf_line_count(bufnr)
+  local ctx_start = start_line
+  local ctx_end = end_line
+
+  -- Try treesitter: find enclosing function/class
+  local ok, node = pcall(vim.treesitter.get_node, { bufnr = bufnr, pos = { start_line - 1, 0 } })
+  if ok and node then
+    local target_types = {
+      "function_declaration", "function_definition", "local_function",
+      "method_declaration", "method_definition", "arrow_function",
+      "class_definition", "export_statement",
+      "function", "method", "call",
+    }
+    local target_set = {}
+    for _, t in ipairs(target_types) do
+      target_set[t] = true
+    end
+
+    local current = node
+    while current do
+      if target_set[current:type()] then
+        local ts_start, _, ts_end, _ = current:range()
+        ctx_start = math.min(ctx_start, ts_start + 1)
+        ctx_end = math.max(ctx_end, ts_end + 1)
+        break
+      end
+      current = current:parent()
+    end
+  end
+
+  -- If treesitter didn't expand the range, use line fallback
+  if ctx_start == start_line and ctx_end == end_line then
+    local padding = 15
+    ctx_start = math.max(1, start_line - padding)
+    ctx_end = math.min(total_lines, end_line + padding)
+  end
+
+  -- Get the lines above and below selection
+  local above = {}
+  if ctx_start < start_line then
+    above = vim.api.nvim_buf_get_lines(bufnr, ctx_start - 1, start_line - 1, false)
+  end
+
+  local below = {}
+  if ctx_end > end_line then
+    below = vim.api.nvim_buf_get_lines(bufnr, end_line, ctx_end, false)
+  end
+
+  return { above = above, below = below }
+end
+
 --- Format code context for inclusion in a prompt.
 ---@param lines string[]
 ---@param filetype string
 ---@param filename string
 ---@param start_line integer|nil
+---@param surrounding {above: string[], below: string[]}|nil
 ---@return string
-function M.format_context(lines, filetype, filename, start_line)
+function M.format_context(lines, filetype, filename, start_line, surrounding)
   local header = filename
   if start_line then
     header = header .. ":" .. start_line
+  end
+
+  if surrounding and (#surrounding.above > 0 or #surrounding.below > 0) then
+    local parts = {}
+    if #surrounding.above > 0 then
+      table.insert(parts, table.concat(surrounding.above, "\n"))
+    end
+    table.insert(parts, "-- ─── SELECTED CODE (lines "
+      .. (start_line or "?") .. "-" .. ((start_line or 1) + #lines - 1) .. ") ───")
+    table.insert(parts, table.concat(lines, "\n"))
+    table.insert(parts, "-- ─── END SELECTED CODE ───")
+    if #surrounding.below > 0 then
+      table.insert(parts, table.concat(surrounding.below, "\n"))
+    end
+    local code = table.concat(parts, "\n")
+    return string.format(
+      "File: %s\nThe code between the SELECTED CODE markers is what you should focus on. "
+        .. "The surrounding code is for context only — do not modify it.\n```%s\n%s\n```",
+      header, filetype, code
+    )
   end
 
   local code = table.concat(lines, "\n")
