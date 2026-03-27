@@ -243,8 +243,15 @@ describe("solomon.actions", function()
     end)
   end)
 
-  describe("cursor adjustment after inline replacement", function()
+  describe("cursor and visual mode adjustment after inline replacement", function()
     local bufnr
+
+    local function adjust(line, replace_end_1, line_delta)
+      if line > replace_end_1 and line_delta ~= 0 then
+        return math.max(1, math.min(line + line_delta, vim.api.nvim_buf_line_count(bufnr)))
+      end
+      return line
+    end
 
     before_each(function()
       bufnr = vim.api.nvim_create_buf(false, true)
@@ -264,91 +271,144 @@ describe("solomon.actions", function()
     end)
 
     after_each(function()
+      pcall(function()
+        vim.api.nvim_feedkeys(
+          vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false
+        )
+      end)
       if vim.api.nvim_buf_is_valid(bufnr) then
         vim.api.nvim_buf_delete(bufnr, { force = true })
       end
     end)
 
-    it("cursor below replacement shifts up when lines are removed", function()
-      -- Cursor on line 8
+    -- Normal mode cursor adjustment
+
+    it("normal mode: cursor below deletion shifts to correct content", function()
       vim.api.nvim_win_set_cursor(0, { 8, 0 })
 
-      -- Replace lines 2-5 (4 lines) with 2 lines (delta = -2)
       vim.api.nvim_buf_set_lines(bufnr, 1, 5, false, { "new A", "new B" })
 
-      -- Simulate the cursor adjustment logic from _execute_inline
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local line_delta = -2 -- 2 lines replaced 4
-      local replace_end_1 = 6 -- 1-indexed end of replaced range (was line 5 + 1)
-      if cursor[1] > replace_end_1 then
-        local new_row = cursor[1] + line_delta
-        new_row = math.max(1, math.min(new_row, vim.api.nvim_buf_line_count(bufnr)))
-        vim.api.nvim_win_set_cursor(0, { new_row, cursor[2] })
-      end
+      local new_row = adjust(8, 6, -2)
+      vim.api.nvim_win_set_cursor(0, { new_row, 0 })
 
-      local final_cursor = vim.api.nvim_win_get_cursor(0)
-      -- Was on line 8, 2 lines removed above → should be on line 6
-      assert.equals(6, final_cursor[1])
+      assert.equals(6, vim.api.nvim_win_get_cursor(0)[1])
+      assert.equals("line 8", vim.api.nvim_buf_get_lines(bufnr, new_row - 1, new_row, false)[1])
     end)
 
-    it("cursor below insertion is auto-adjusted by Neovim", function()
-      vim.api.nvim_win_set_cursor(0, { 6, 0 })
-
-      -- Replace lines 2-3 (2 lines) with 4 lines (delta = +2)
-      -- Neovim auto-adjusts cursor for net insertions in current buffer
-      vim.api.nvim_buf_set_lines(bufnr, 1, 3, false, { "a", "b", "c", "d" })
-
-      local final_cursor = vim.api.nvim_win_get_cursor(0)
-      -- Verify cursor tracked the content correctly
-      local line = vim.api.nvim_buf_get_lines(bufnr, final_cursor[1] - 1, final_cursor[1], false)[1]
-      assert.equals("line 6", line)
-    end)
-
-    it("cursor inside replacement is not adjusted", function()
-      vim.api.nvim_win_set_cursor(0, { 3, 0 })
-
-      -- Replace lines 2-5
-      vim.api.nvim_buf_set_lines(bufnr, 1, 5, false, { "new A", "new B" })
-
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local line_delta = -2
-      local replace_end_1 = 6
-      -- Cursor row 3 is NOT > 6, so no adjustment
-      if cursor[1] > replace_end_1 then
-        vim.api.nvim_win_set_cursor(0, { cursor[1] + line_delta, cursor[2] })
-      end
-
-      local final_cursor = vim.api.nvim_win_get_cursor(0)
-      -- Neovim may have clamped to buffer size, but we didn't manually adjust
-      -- The key assertion: we did NOT apply the delta
-      assert.is_true(final_cursor[1] <= 3)
-    end)
-
-    it("cursor above replacement is not adjusted", function()
+    it("normal mode: cursor above replacement stays put", function()
       vim.api.nvim_win_set_cursor(0, { 1, 0 })
-
-      -- Replace lines 5-8
       vim.api.nvim_buf_set_lines(bufnr, 4, 8, false, { "x" })
-
-      local cursor = vim.api.nvim_win_get_cursor(0)
-      local replace_end_1 = 9
-      if cursor[1] > replace_end_1 then
-        vim.api.nvim_win_set_cursor(0, { cursor[1] - 3, cursor[2] })
-      end
-
-      local final_cursor = vim.api.nvim_win_get_cursor(0)
-      assert.equals(1, final_cursor[1])
+      assert.equals(1, adjust(1, 9, -3))
     end)
 
-    it("cursor does not go below line 1", function()
+    it("normal mode: cursor inside replacement stays put", function()
+      vim.api.nvim_win_set_cursor(0, { 3, 0 })
+      vim.api.nvim_buf_set_lines(bufnr, 1, 5, false, { "new A", "new B" })
+      assert.equals(3, adjust(3, 6, -2))
+    end)
+
+    it("normal mode: adjust clamps to buffer bounds", function()
+      assert.equals(1, math.max(1, math.min(3 - 8, 1)))
+    end)
+
+    -- Visual mode detection
+
+    it("visual mode: nvim_get_mode detects visual mode", function()
+      vim.api.nvim_win_set_cursor(0, { 5, 0 })
+      vim.cmd("normal! V3j")
+
+      local mode_info = vim.api.nvim_get_mode()
+      assert.equals("V", mode_info.mode)
+    end)
+
+    it("visual mode: anchor and cursor captured via line()", function()
+      vim.api.nvim_win_set_cursor(0, { 5, 0 })
+      vim.cmd("normal! V")
+      vim.api.nvim_win_set_cursor(0, { 8, 0 })
+
+      assert.equals(5, vim.fn.line("v"))
+      assert.equals(8, vim.fn.line("."))
+    end)
+
+    -- Visual mode restoration after replacement
+
+    it("visual mode: restored after deletion above with correct positions", function()
+      -- Enter visual line mode on lines 7-9
+      vim.api.nvim_win_set_cursor(0, { 7, 0 })
+      vim.cmd("normal! V")
+      vim.api.nvim_win_set_cursor(0, { 9, 0 })
+
+      local va = vim.fn.line("v")
+      local vc = vim.fn.line(".")
+      local vm = vim.api.nvim_get_mode().mode
+
+      -- Exit visual before modifying buffer
+      vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false
+      )
+
+      -- Action A completes above: lines 2-4 → 1 line (delta = -2)
+      vim.api.nvim_buf_set_lines(bufnr, 1, 4, false, { "collapsed" })
+
+      -- Adjust positions
+      local new_anchor = adjust(va, 5, -2)
+      local new_cursor = adjust(vc, 5, -2)
+      assert.equals(5, new_anchor) -- 7 - 2
+      assert.equals(7, new_cursor) -- 9 - 2
+
+      -- Restore visual mode
+      vim.api.nvim_win_set_cursor(0, { new_anchor, 0 })
+      vim.cmd("normal! " .. vm)
+      vim.api.nvim_win_set_cursor(0, { new_cursor, 0 })
+
+      -- Verify visual mode is active
+      assert.equals("V", vim.api.nvim_get_mode().mode)
+
+      -- Verify content at adjusted positions is correct
+      assert.equals("line 7", vim.api.nvim_buf_get_lines(bufnr, new_anchor - 1, new_anchor, false)[1])
+      assert.equals("line 9", vim.api.nvim_buf_get_lines(bufnr, new_cursor - 1, new_cursor, false)[1])
+    end)
+
+    it("visual mode: restored even when line count unchanged", function()
+      vim.api.nvim_win_set_cursor(0, { 6, 0 })
+      vim.cmd("normal! V")
+      vim.api.nvim_win_set_cursor(0, { 8, 0 })
+
+      local va = vim.fn.line("v")
+      local vc = vim.fn.line(".")
+      local vm = vim.api.nvim_get_mode().mode
+
+      vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false
+      )
+
+      -- Same-size replacement (delta = 0) still exits visual
+      vim.api.nvim_buf_set_lines(bufnr, 1, 3, false, { "new 2", "new 3" })
+
+      -- Restore visual — positions unchanged
+      vim.api.nvim_win_set_cursor(0, { va, 0 })
+      vim.cmd("normal! " .. vm)
+      vim.api.nvim_win_set_cursor(0, { vc, 0 })
+
+      assert.equals("V", vim.api.nvim_get_mode().mode)
+    end)
+
+    it("visual mode: replacement below does not shift positions", function()
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      vim.cmd("normal! V")
       vim.api.nvim_win_set_cursor(0, { 3, 0 })
 
-      -- Replace nearly everything
-      vim.api.nvim_buf_set_lines(bufnr, 0, 9, false, { "only line" })
+      local va = vim.fn.line("v")
+      local vc = vim.fn.line(".")
 
-      local line_count = vim.api.nvim_buf_line_count(bufnr)
-      local new_row = math.max(1, math.min(3 - 8, line_count))
-      assert.equals(1, new_row)
+      vim.api.nvim_feedkeys(
+        vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false
+      )
+
+      vim.api.nvim_buf_set_lines(bufnr, 6, 9, false, { "collapsed" })
+
+      assert.equals(2, adjust(va, 10, -2))
+      assert.equals(3, adjust(vc, 10, -2))
     end)
   end)
 
