@@ -148,8 +148,8 @@ describe("solomon.actions", function()
   end)
 
   describe("action definitions", function()
-    it("refactor action is marked as inline", function()
-      assert.is_true(actions.actions.refactor.inline)
+    it("improve action is marked as inline", function()
+      assert.is_true(actions.actions.improve.inline)
     end)
 
     it("explain action is not inline", function()

@@ -15,9 +15,7 @@
 ---@field toggle string Keymap to toggle terminal
 ---@field ask string Keymap for free-form ask (visual)
 ---@field explain string Keymap for explain action
----@field refactor string Keymap for refactor action
----@field fix string Keymap for fix action
----@field optimize string Keymap for optimize action
+---@field improve string Keymap for improve action (refactor + fix + optimize)
 ---@field tests string Keymap for generate tests action
 ---@field sessions string Keymap for session picker
 ---@field continue_session string Keymap for continue last session
@@ -56,9 +54,7 @@ M.defaults = {
     toggle = "<leader>aa",
     ask = "<leader>ak",
     explain = "<leader>ae",
-    refactor = "<leader>ar",
-    fix = "<leader>af",
-    optimize = "<leader>ao",
+    improve = "<leader>ai",
     tests = "<leader>at",
     sessions = "<leader>as",
     continue_session = "<leader>ac",

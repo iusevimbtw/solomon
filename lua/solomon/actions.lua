@@ -12,21 +12,9 @@ M.actions = {
 		prompt_template = "Explain this code clearly and concisely. Cover what it does, why, and any non-obvious behavior:\n\n{context}",
 		show_input = false,
 	},
-	refactor = {
-		name = "Refactor",
-		prompt_template = "Refactor this code to improve readability, structure, and maintainability. Follow the project conventions described below if provided. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
-		show_input = false,
-		inline = true,
-	},
-	fix = {
-		name = "Fix",
-		prompt_template = "Find and fix the bugs and issues in this code. {diagnostics}Follow the project conventions if provided. Respond with ONLY the fixed code in a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
-		show_input = false,
-		inline = true,
-	},
-	optimize = {
-		name = "Optimize",
-		prompt_template = "Optimize this code for performance and efficiency. Follow the project conventions if provided. Respond with ONLY the optimized code in a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
+	improve = {
+		name = "Improve",
+		prompt_template = "Improve this code. Fix any bugs or issues, refactor for readability and maintainability, and optimize where possible. {diagnostics}Follow the project conventions if provided. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
 		show_input = false,
 		inline = true,
 	},
@@ -142,25 +130,33 @@ function M._execute_inline(selection, action, source)
 		:gsub("{context}", context_str)
 	local bufnr = source.bufnr
 
-	-- Create namespace for virtual text
-	local ns = vim.api.nvim_create_namespace("solomon_inline")
+	-- Create unique namespace per invocation so concurrent spinners don't interfere
+	local ns = vim.api.nvim_create_namespace("solomon_inline_" .. vim.uv.hrtime())
 
 	-- Add "Thinking..." virtual lines before and after the selection
 	local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
 	local frame_idx = 1
+	local extmark_above = nil
+	local extmark_below = nil
 
 	local function set_loader_extmarks()
-		vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 		local spinner = spinner_frames[frame_idx]
-		-- Virtual line above selection
-		vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, {
+		-- Update extmarks in-place using their IDs (avoids clear+recreate flicker)
+		local above_opts = {
 			virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
 			virt_lines_above = true,
-		})
-		-- Virtual line below selection
-		vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, {
+		}
+		local below_opts = {
 			virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
-		})
+		}
+		if extmark_above then
+			above_opts.id = extmark_above
+		end
+		if extmark_below then
+			below_opts.id = extmark_below
+		end
+		extmark_above = vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, above_opts)
+		extmark_below = vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, below_opts)
 	end
 
 	set_loader_extmarks()
@@ -350,16 +346,8 @@ function M.explain()
 	M.run("explain")
 end
 
-function M.refactor()
-	M.run("refactor")
-end
-
-function M.fix()
-	M.run("fix")
-end
-
-function M.optimize()
-	M.run("optimize")
+function M.improve()
+	M.run("improve")
 end
 
 function M.tests()

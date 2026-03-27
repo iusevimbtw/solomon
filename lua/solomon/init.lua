@@ -124,17 +124,9 @@ function M.register_keymaps()
 		require("solomon.actions").explain()
 	end, "Explain code")
 
-	map({ "n", "v" }, km.refactor, function()
-		require("solomon.actions").refactor()
-	end, "Refactor code")
-
-	map({ "n", "v" }, km.fix, function()
-		require("solomon.actions").fix()
-	end, "Fix code")
-
-	map({ "n", "v" }, km.optimize, function()
-		require("solomon.actions").optimize()
-	end, "Optimize code")
+	map({ "n", "v" }, km.improve, function()
+		require("solomon.actions").improve()
+	end, "Improve code")
 
 	map({ "n", "v" }, km.tests, function()
 		require("solomon.actions").tests()
@@ -168,9 +160,7 @@ function M.register_keymaps()
 			{ km.toggle, icon = "󰄛" },
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
-			{ km.refactor, icon = "♻️", mode = { "n", "v" } },
-			{ km.fix, icon = "🔧", mode = { "n", "v" } },
-			{ km.optimize, icon = "⚡", mode = { "n", "v" } },
+			{ km.improve, icon = "✨", mode = { "n", "v" } },
 			{ km.tests, icon = "🧪", mode = { "n", "v" } },
 			{ km.sessions, icon = "📋" },
 			{ km.continue_session, icon = "▶️" },
