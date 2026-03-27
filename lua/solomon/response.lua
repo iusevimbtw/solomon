@@ -87,9 +87,39 @@ function M.open(source)
     lines = {},
     job = nil,
     source = source,
+    _thinking = true,
+    _spinner_timer = nil,
   }
 
   M.current = win
+
+  -- Show animated spinner until first token arrives
+  local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+  local frame_idx = 1
+
+  local function render_spinner()
+    if not win._thinking or not vim.api.nvim_buf_is_valid(win.buf) then
+      return
+    end
+    local spinner = spinner_frames[frame_idx]
+    vim.bo[win.buf].modifiable = true
+    vim.api.nvim_buf_set_lines(win.buf, 0, -1, false, { "", "  " .. spinner .. " Thinking...", "" })
+    vim.bo[win.buf].modifiable = false
+  end
+
+  render_spinner()
+
+  local timer = vim.uv.new_timer()
+  win._spinner_timer = timer
+  timer:start(80, 80, vim.schedule_wrap(function()
+    if not win._thinking then
+      timer:stop()
+      if not timer:is_closing() then timer:close() end
+      return
+    end
+    frame_idx = (frame_idx % #spinner_frames) + 1
+    pcall(render_spinner)
+  end))
 
   -- Keymaps
   popup:map("n", "q", function()
@@ -128,6 +158,16 @@ function M.append_token(token)
   local win = M.current
   if not win or not vim.api.nvim_buf_is_valid(win.buf) then
     return
+  end
+
+  -- Stop the thinking spinner on first token
+  if win._thinking then
+    win._thinking = false
+    if win._spinner_timer then
+      win._spinner_timer:stop()
+      if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
+      win._spinner_timer = nil
+    end
   end
 
   local token_lines = vim.split(token, "\n", { plain = true })
@@ -189,7 +229,16 @@ end
 --- Cancel the current streaming request.
 function M.cancel()
   local win = M.current
-  if win and win.job then
+  if not win then
+    return
+  end
+  win._thinking = false
+  if win._spinner_timer then
+    win._spinner_timer:stop()
+    if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
+    win._spinner_timer = nil
+  end
+  if win.job then
     win.job.cancel()
     win.job = nil
     M.set_status("Solomon (cancelled)")
@@ -203,6 +252,12 @@ function M.close()
   if win then
     if win.job then
       win.job.cancel()
+    end
+    win._thinking = false
+    if win._spinner_timer then
+      win._spinner_timer:stop()
+      if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
+      win._spinner_timer = nil
     end
     pcall(vim.api.nvim_del_augroup_by_id,
       vim.api.nvim_create_augroup("solomon_response_resize", { clear = true }))

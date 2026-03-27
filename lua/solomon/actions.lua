@@ -14,8 +14,9 @@ M.actions = {
   },
   refactor = {
     name = "Refactor",
-    prompt_template = "Suggest a refactoring for this code. Show the improved version with a brief explanation of what changed and why:\n\n{context}",
+    prompt_template = "Refactor this code. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{context}",
     show_input = false,
+    inline = true, -- Replace selection in-place instead of opening response window
   },
   fix = {
     name = "Fix",
@@ -67,6 +68,8 @@ function M.run(action_name)
 
   if action.show_input then
     M._open_prompt(selection, action, source)
+  elseif action.inline then
+    M._execute_inline(selection, action, source)
   else
     M._execute(selection, action, nil, source)
   end
@@ -111,6 +114,118 @@ function M._execute(selection, action, extra_prompt, source)
   end
 
   M._send_to_claude(full_prompt, source)
+end
+
+--- Execute an inline action — show loader in buffer, replace selection with result.
+---@param selection table
+---@param action solomon.Action
+---@param source table
+function M._execute_inline(selection, action, source)
+  local utils = require("solomon.utils")
+  local streaming = require("solomon.streaming")
+
+  local context_str = utils.format_context(
+    selection.lines,
+    selection.filetype,
+    selection.filename,
+    selection.start_line
+  )
+
+  local full_prompt = action.prompt_template:gsub("{context}", context_str)
+  local bufnr = source.bufnr
+
+  -- Create namespace for virtual text
+  local ns = vim.api.nvim_create_namespace("solomon_inline")
+
+  -- Add "Thinking..." virtual lines before and after the selection
+  local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+  local frame_idx = 1
+
+  local function set_loader_extmarks()
+    vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+    local spinner = spinner_frames[frame_idx]
+    -- Virtual line above selection
+    vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, {
+      virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
+      virt_lines_above = true,
+    })
+    -- Virtual line below selection
+    vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, {
+      virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
+    })
+  end
+
+  set_loader_extmarks()
+
+  -- Animate the spinner
+  local timer = vim.uv.new_timer()
+  timer:start(80, 80, vim.schedule_wrap(function()
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+      timer:stop()
+      timer:close()
+      return
+    end
+    frame_idx = (frame_idx % #spinner_frames) + 1
+    pcall(set_loader_extmarks)
+  end))
+
+  -- Accumulate the full response
+  local accumulated = ""
+
+  local job = streaming.send({
+    prompt = full_prompt,
+    on_token = function(token)
+      accumulated = accumulated .. token
+    end,
+    on_done = function(result)
+      -- Stop spinner
+      timer:stop()
+      timer:close()
+      vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+
+      require("solomon.statusline").record_request(result)
+
+      -- Extract code from the response (find first code block)
+      local code = M._extract_code_block(accumulated)
+      if not code then
+        vim.notify("[solomon] No code block found in response — opening response window", vim.log.levels.WARN)
+        -- Fallback: show full response in response window
+        M._send_to_claude(full_prompt, source)
+        return
+      end
+
+      local new_lines = vim.split(code, "\n", { plain = true })
+
+      -- Replace the selection in the source buffer
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
+        vim.notify(
+          string.format("[solomon] Refactored %d → %d lines", source.end_line - source.start_line + 1, #new_lines),
+          vim.log.levels.INFO
+        )
+      end
+    end,
+    on_error = function(err)
+      timer:stop()
+      timer:close()
+      vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+      vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
+    end,
+  })
+end
+
+--- Extract the first code block from a markdown response.
+---@param text string
+---@return string|nil
+function M._extract_code_block(text)
+  -- Match content between first ``` fence pair
+  local code = text:match("```%S*\n(.-)\n```")
+  if code then
+    return code
+  end
+  -- Try without language tag
+  code = text:match("```\n(.-)\n```")
+  return code
 end
 
 --- Send a prompt to Claude and display the streaming response.

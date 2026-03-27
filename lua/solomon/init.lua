@@ -103,57 +103,69 @@ function M.register_keymaps()
 
   map("n", km.toggle, function()
     require("solomon.terminal").toggle()
-  end, "Solomon: Toggle Claude Code")
+  end, "Toggle Claude Code")
 
   map("v", km.ask, function()
     require("solomon.actions").ask()
-  end, "Solomon: Ask Claude")
+  end, "Ask Claude")
 
   map("v", km.explain, function()
     require("solomon.actions").explain()
-  end, "Solomon: Explain code")
+  end, "Explain code")
 
   map("v", km.refactor, function()
     require("solomon.actions").refactor()
-  end, "Solomon: Refactor code")
+  end, "Refactor code")
 
   map("v", km.fix, function()
     require("solomon.actions").fix()
-  end, "Solomon: Fix code")
+  end, "Fix code")
 
   map("v", km.optimize, function()
     require("solomon.actions").optimize()
-  end, "Solomon: Optimize code")
+  end, "Optimize code")
 
   map("v", km.tests, function()
     require("solomon.actions").tests()
-  end, "Solomon: Generate tests")
+  end, "Generate tests")
 
   map("n", km.sessions, function()
     require("solomon.sessions").pick()
-  end, "Solomon: Browse sessions")
+  end, "Browse sessions")
 
   map("n", km.continue_session, function()
     require("solomon.sessions").continue_last()
-  end, "Solomon: Continue last session")
+  end, "Continue last session")
 
   map("n", km.review, function()
     require("solomon.git").review()
-  end, "Solomon: Review git diff")
+  end, "Review git diff")
 
   map("n", km.commit, function()
     require("solomon.git").commit()
-  end, "Solomon: Generate commit message")
+  end, "Generate commit message")
 
   map({ "n", "v" }, km.blame, function()
     require("solomon.git").blame()
-  end, "Solomon: Explain git blame")
+  end, "Explain git blame")
 
-  -- Register which-key group
+  -- Register which-key group with icons
   local wk_ok, wk = pcall(require, "which-key")
   if wk_ok then
     wk.add({
-      { "<leader>a", group = "Solomon (AI)" },
+      { "<leader>a", group = "Solomon (AI)", icon = "🤖" },
+      { km.toggle, icon = "" },
+      { km.ask, icon = "❓", mode = "v" },
+      { km.explain, icon = "🧠", mode = "v" },
+      { km.refactor, icon = "♻️", mode = "v" },
+      { km.fix, icon = "🔧", mode = "v" },
+      { km.optimize, icon = "⚡", mode = "v" },
+      { km.tests, icon = "🧪", mode = "v" },
+      { km.sessions, icon = "📋" },
+      { km.continue_session, icon = "▶️" },
+      { km.review, icon = "" },
+      { km.commit, icon = "" },
+      { km.blame, icon = "" },
     })
   end
 end
