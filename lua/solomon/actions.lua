@@ -217,12 +217,15 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 		end)
 	)
 
-	local function cleanup()
+	local function stop_spinner()
 		timer:stop()
 		if not timer:is_closing() then
 			timer:close()
 		end
 		vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+	end
+
+	local function cleanup_tracking()
 		pcall(vim.api.nvim_buf_del_extmark, bufnr, track_ns, mark_start)
 		pcall(vim.api.nvim_buf_del_extmark, bufnr, track_ns, mark_end)
 	end
@@ -236,12 +239,13 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 			accumulated = accumulated .. token
 		end,
 		on_done = function(result)
-			cleanup()
+			stop_spinner()
 			require("solomon.statusline").record_request(result)
 
 			-- Extract code from the response (find first code block)
 			local code = M._extract_code_block(accumulated)
 			if not code then
+				cleanup_tracking()
 				vim.notify("[solomon] No code block found in response — opening response window", vim.log.levels.WARN)
 				M._send_to_claude(full_prompt, source)
 				return
@@ -279,9 +283,12 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 					vim.log.levels.INFO
 				)
 			end
+
+			cleanup_tracking()
 		end,
 		on_error = function(err)
-			cleanup()
+			stop_spinner()
+			cleanup_tracking()
 			vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
 		end,
 	})

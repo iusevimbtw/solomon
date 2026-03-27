@@ -14,7 +14,9 @@ local M = {}
 --- Open the prompt window with code context and input area.
 ---@param opts solomon.PromptOpts
 function M.open(opts)
-  local context_height = math.min(#opts.context_lines, 20)
+  local max_context = math.floor(vim.o.lines * 0.4)
+  -- Add 2 for border (top + bottom) so all content lines are visible
+  local context_height = math.min(#opts.context_lines + 2, max_context)
   local input_height = 5
 
   -- Context pane (top) — read-only code preview
