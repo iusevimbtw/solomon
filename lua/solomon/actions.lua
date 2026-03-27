@@ -265,20 +265,52 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 				local start_row, end_row = get_tracked_range()
 				local orig_count = end_row - start_row + 1
 				local line_delta = #new_lines - orig_count
-
-				-- Capture cursor before replacement
-				local cursor = vim.api.nvim_win_get_cursor(0)
-				local cursor_row = cursor[1] -- 1-indexed
-				local cursor_col = cursor[2]
 				local replace_end_1 = end_row + 1 -- 1-indexed end of replaced range
+
+				-- Capture cursor and visual state before replacement
+				-- nvim_get_mode returns actual mode even from vim.schedule
+				local mode_info = vim.api.nvim_get_mode()
+				local mode = mode_info.mode
+				local in_visual = mode == "v" or mode == "V" or mode == "\22" or mode == "no"
+				local cursor = vim.api.nvim_win_get_cursor(0)
+				local cursor_row = cursor[1]
+				local cursor_col = cursor[2]
+				local visual_anchor, visual_cursor, visual_mode_char
+				if in_visual then
+					-- getpos("v") = anchor, getpos(".") = cursor end
+					visual_anchor = vim.fn.line("v")
+					visual_cursor = vim.fn.line(".")
+					visual_mode_char = mode
+					-- Exit visual mode before buf_set_lines to avoid Neovim errors
+					vim.api.nvim_feedkeys(
+						vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false
+					)
+				end
 
 				vim.api.nvim_buf_set_lines(bufnr, start_row, end_row + 1, false, new_lines)
 
-				-- Adjust cursor if it was below the replaced range
-				if cursor_row > replace_end_1 then
-					local new_row = cursor_row + line_delta
-					new_row = math.max(1, math.min(new_row, vim.api.nvim_buf_line_count(bufnr)))
-					pcall(vim.api.nvim_win_set_cursor, 0, { new_row, cursor_col })
+				local function adjust(line)
+					if line > replace_end_1 and line_delta ~= 0 then
+						return math.max(1, math.min(line + line_delta, vim.api.nvim_buf_line_count(bufnr)))
+					end
+					return line
+				end
+
+				if in_visual then
+					-- Restore visual selection with adjusted positions
+					local new_anchor = adjust(visual_anchor)
+					local new_cursor = adjust(visual_cursor)
+					pcall(function()
+						vim.api.nvim_win_set_cursor(0, { new_anchor, 0 })
+						vim.cmd("normal! " .. visual_mode_char)
+						vim.api.nvim_win_set_cursor(0, { new_cursor, cursor_col })
+					end)
+				else
+					-- Normal mode: just adjust cursor
+					local new_cursor_row = adjust(cursor_row)
+					if new_cursor_row ~= cursor_row then
+						pcall(vim.api.nvim_win_set_cursor, 0, { new_cursor_row, cursor_col })
+					end
 				end
 
 				vim.notify(
