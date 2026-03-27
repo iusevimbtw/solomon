@@ -37,6 +37,73 @@ describe("solomon.utils", function()
     end)
   end)
 
+  describe("read_claude_md", function()
+    local tmpdir
+    local orig_cwd
+
+    before_each(function()
+      tmpdir = vim.fn.tempname()
+      vim.fn.mkdir(tmpdir, "p")
+      orig_cwd = vim.fn.getcwd()
+      vim.cmd("cd " .. vim.fn.fnameescape(tmpdir))
+    end)
+
+    after_each(function()
+      vim.cmd("cd " .. vim.fn.fnameescape(orig_cwd))
+      vim.fn.delete(tmpdir, "rf")
+    end)
+
+    it("reads CLAUDE.md from project root", function()
+      local f = io.open(tmpdir .. "/CLAUDE.md", "w")
+      f:write("# My Project\n\nUse tabs. No semicolons.")
+      f:close()
+
+      local content = utils.read_claude_md()
+      assert.is_not_nil(content)
+      assert.truthy(content:find("Use tabs"))
+      assert.truthy(content:find("No semicolons"))
+    end)
+
+    it("reads CLAUDE.md from .claude/ subdirectory", function()
+      vim.fn.mkdir(tmpdir .. "/.claude", "p")
+      local f = io.open(tmpdir .. "/.claude/CLAUDE.md", "w")
+      f:write("nested conventions")
+      f:close()
+
+      local content = utils.read_claude_md()
+      assert.is_not_nil(content)
+      assert.equals("nested conventions", content)
+    end)
+
+    it("prefers root CLAUDE.md over .claude/CLAUDE.md", function()
+      local f1 = io.open(tmpdir .. "/CLAUDE.md", "w")
+      f1:write("root version")
+      f1:close()
+
+      vim.fn.mkdir(tmpdir .. "/.claude", "p")
+      local f2 = io.open(tmpdir .. "/.claude/CLAUDE.md", "w")
+      f2:write("nested version")
+      f2:close()
+
+      local content = utils.read_claude_md()
+      assert.equals("root version", content)
+    end)
+
+    it("returns nil when no CLAUDE.md exists", function()
+      local content = utils.read_claude_md()
+      assert.is_nil(content)
+    end)
+
+    it("returns nil for empty CLAUDE.md", function()
+      local f = io.open(tmpdir .. "/CLAUDE.md", "w")
+      f:write("")
+      f:close()
+
+      local content = utils.read_claude_md()
+      assert.is_nil(content)
+    end)
+  end)
+
   describe("detect_indent", function()
     it("detects common leading spaces", function()
       local indent = utils.detect_indent({ "    foo", "    bar", "      baz" })

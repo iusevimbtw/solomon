@@ -164,4 +164,39 @@ describe("solomon.actions", function()
       end
     end)
   end)
+
+  describe("_build_project_context", function()
+    local tmpdir
+    local orig_cwd
+
+    before_each(function()
+      -- Pre-load solomon.utils before cd-ing away from plugin root
+      require("solomon.utils")
+      tmpdir = vim.fn.tempname()
+      vim.fn.mkdir(tmpdir, "p")
+      orig_cwd = vim.fn.getcwd()
+      vim.cmd("cd " .. vim.fn.fnameescape(tmpdir))
+    end)
+
+    after_each(function()
+      vim.cmd("cd " .. vim.fn.fnameescape(orig_cwd))
+      vim.fn.delete(tmpdir, "rf")
+    end)
+
+    it("returns formatted CLAUDE.md content when it exists", function()
+      local f = io.open(tmpdir .. "/CLAUDE.md", "w")
+      f:write("Use tabs. Pure Lua.")
+      f:close()
+
+      local ctx = actions._build_project_context()
+      assert.truthy(ctx:find("Project conventions"))
+      assert.truthy(ctx:find("Use tabs. Pure Lua."))
+      assert.truthy(ctx:find("CLAUDE.md"))
+    end)
+
+    it("returns empty string when no CLAUDE.md", function()
+      local ctx = actions._build_project_context()
+      assert.equals("", ctx)
+    end)
+  end)
 end)

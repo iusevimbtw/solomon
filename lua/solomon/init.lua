@@ -128,6 +128,10 @@ function M.register_keymaps()
 		require("solomon.actions").improve()
 	end, "Improve code")
 
+	map({ "n", "v" }, km.task, function()
+		require("solomon.actions").task()
+	end, "Task (prompt + inline)")
+
 	map({ "n", "v" }, km.tests, function()
 		require("solomon.actions").tests()
 	end, "Generate tests")
@@ -161,6 +165,7 @@ function M.register_keymaps()
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
 			{ km.improve, icon = "✨", mode = { "n", "v" } },
+			{ km.task, icon = "📝", mode = { "n", "v" } },
 			{ km.tests, icon = "🧪", mode = { "n", "v" } },
 			{ km.sessions, icon = "📋" },
 			{ km.continue_session, icon = "▶️" },

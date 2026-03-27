@@ -23,6 +23,12 @@ M.actions = {
 		prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Follow the project conventions described below if provided. Put all test code in a single code block:\n\n{project_context}{context}",
 		show_input = false,
 	},
+	task = {
+		name = "Task",
+		prompt_template = "{user_prompt}\n\nFollow the project conventions if provided. Respond with ONLY the updated code inside a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
+		show_input = true,
+		inline = true,
+	},
 	ask = {
 		name = "Ask",
 		prompt_template = nil,
@@ -82,8 +88,23 @@ function M._open_prompt(selection, action, source)
 		filename = selection.filename,
 		start_line = selection.start_line,
 		on_submit = function(user_prompt, context_str)
-			local full_prompt = user_prompt .. "\n\n" .. context_str
-			M._send_to_claude(full_prompt, source)
+			if action.inline and action.prompt_template then
+				-- Inline prompt: build full prompt, then execute inline with spinner
+				local utils = require("solomon.utils")
+				local context_str_full =
+					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
+				local project_context = M._build_project_context()
+				local diagnostics = M._build_diagnostics_context(source)
+				local full_prompt = action.prompt_template
+					:gsub("{user_prompt}", user_prompt)
+					:gsub("{diagnostics}", diagnostics)
+					:gsub("{project_context}", project_context)
+					:gsub("{context}", context_str_full)
+				M._execute_inline(selection, action, source, full_prompt)
+			else
+				local full_prompt = user_prompt .. "\n\n" .. context_str
+				M._send_to_claude(full_prompt, source)
+			end
 		end,
 	})
 end
@@ -115,19 +136,24 @@ end
 ---@param selection table
 ---@param action solomon.Action
 ---@param source table
-function M._execute_inline(selection, action, source)
+---@param pre_built_prompt string|nil If provided, skip prompt building
+function M._execute_inline(selection, action, source, pre_built_prompt)
 	local utils = require("solomon.utils")
 	local streaming = require("solomon.streaming")
 
-	local context_str =
-		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
-
-	local project_context = M._build_project_context()
-	local diagnostics = M._build_diagnostics_context(source)
-	local full_prompt = action.prompt_template
-		:gsub("{diagnostics}", diagnostics)
-		:gsub("{project_context}", project_context)
-		:gsub("{context}", context_str)
+	local full_prompt
+	if pre_built_prompt then
+		full_prompt = pre_built_prompt
+	else
+		local context_str =
+			utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
+		local project_context = M._build_project_context()
+		local diagnostics = M._build_diagnostics_context(source)
+		full_prompt = action.prompt_template
+			:gsub("{diagnostics}", diagnostics)
+			:gsub("{project_context}", project_context)
+			:gsub("{context}", context_str)
+	end
 	local bufnr = source.bufnr
 
 	-- Create unique namespace per invocation so concurrent spinners don't interfere
@@ -348,6 +374,10 @@ end
 
 function M.improve()
 	M.run("improve")
+end
+
+function M.task()
+	M.run("task")
 end
 
 function M.tests()
