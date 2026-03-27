@@ -163,7 +163,7 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	-- Place tracking extmarks that auto-adjust when lines above shift
 	local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, source.start_line - 1, 0, {})
 	local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, source.end_line - 1, 0, {
-		right_gravity = false, -- stays at end of range, not pushed down by edits at this line
+		right_gravity = true,
 	})
 
 	-- Helper to read current tracked positions (0-indexed)
