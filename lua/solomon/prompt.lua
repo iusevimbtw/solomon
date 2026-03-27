@@ -67,10 +67,7 @@ function M.open(opts)
   local layout = Layout(
     {
       relative = "editor",
-      position = {
-        row = "10%",
-        col = "15%",
-      },
+      position = "50%",
       size = {
         width = "70%",
         height = context_height + input_height + 4, -- account for borders

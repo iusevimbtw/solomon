@@ -42,10 +42,7 @@ function M.open(source)
       },
     },
     relative = "editor",
-    position = {
-      row = "10%",
-      col = "10%",
-    },
+    position = "50%",
     size = {
       width = "80%",
       height = "70%",
