@@ -25,7 +25,7 @@ function M.open(source)
     M.close()
   end
 
-  local bottom_hints = " q: close | <C-c>: cancel | ga: apply | gy: yank block "
+  local bottom_hints = " q: close | <C-c>: cancel | ga: apply | gy: yank | gd: diff "
 
   local Popup = require("nui.popup")
   local popup = Popup({
