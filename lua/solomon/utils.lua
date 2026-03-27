@@ -63,6 +63,33 @@ function M.format_context(lines, filetype, filename, start_line)
   return string.format("File: %s\n```%s\n%s\n```", header, filetype, code)
 end
 
+--- Find and read CLAUDE.md from the project root (cwd or git root).
+--- Returns the contents or nil if not found.
+---@return string|nil
+function M.read_claude_md()
+  -- Try git root first, then cwd
+  local git_root = vim.fn.system("git rev-parse --show-toplevel 2>/dev/null")
+  local root = vim.v.shell_error == 0 and vim.trim(git_root) or vim.fn.getcwd()
+
+  local paths = {
+    root .. "/CLAUDE.md",
+    root .. "/.claude/CLAUDE.md",
+  }
+
+  for _, path in ipairs(paths) do
+    local f = io.open(path, "r")
+    if f then
+      local content = f:read("*a")
+      f:close()
+      if content and #content > 0 then
+        return content
+      end
+    end
+  end
+
+  return nil
+end
+
 --- Detect the base indentation of a set of lines (smallest leading whitespace).
 ---@param lines string[]
 ---@return string indent The common leading whitespace prefix

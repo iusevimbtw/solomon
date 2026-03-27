@@ -9,33 +9,33 @@ local M = {}
 M.actions = {
 	explain = {
 		name = "Explain",
-		prompt_template = "Explain this code clearly and concisely:\n\n{context}",
+		prompt_template = "Explain this code clearly and concisely. Cover what it does, why, and any non-obvious behavior:\n\n{context}",
 		show_input = false,
 	},
 	refactor = {
 		name = "Refactor",
-		prompt_template = "Refactor this code. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{context}",
+		prompt_template = "Refactor this code to improve readability, structure, and maintainability. Follow the project conventions described below if provided. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
 		show_input = false,
-		inline = true, -- Replace selection in-place instead of opening response window
+		inline = true,
 	},
 	fix = {
 		name = "Fix",
-		prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{context}",
+		prompt_template = "Find and fix any bugs, logic errors, or issues in this code. Follow the project conventions described below if provided. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{project_context}{context}",
 		show_input = false,
 	},
 	optimize = {
 		name = "Optimize",
-		prompt_template = "Optimize this code for performance. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{context}",
+		prompt_template = "Optimize this code for performance and efficiency. Follow the project conventions described below if provided. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{project_context}{context}",
 		show_input = false,
 	},
 	tests = {
 		name = "Generate Tests",
-		prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Put all test code in a single code block:\n\n{context}",
+		prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Follow the project conventions described below if provided. Put all test code in a single code block:\n\n{project_context}{context}",
 		show_input = false,
 	},
 	ask = {
 		name = "Ask",
-		prompt_template = nil, -- User provides the prompt
+		prompt_template = nil,
 		show_input = true,
 	},
 }
@@ -104,7 +104,8 @@ function M._execute(selection, action, extra_prompt, source)
 	local context_str =
 		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
-	local full_prompt = action.prompt_template:gsub("{context}", context_str)
+	local project_context = M._build_project_context()
+	local full_prompt = action.prompt_template:gsub("{project_context}", project_context):gsub("{context}", context_str)
 	if extra_prompt then
 		full_prompt = full_prompt .. "\n\n" .. extra_prompt
 	end
@@ -123,7 +124,8 @@ function M._execute_inline(selection, action, source)
 	local context_str =
 		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
-	local full_prompt = action.prompt_template:gsub("{context}", context_str)
+	local project_context = M._build_project_context()
+	local full_prompt = action.prompt_template:gsub("{project_context}", project_context):gsub("{context}", context_str)
 	local bufnr = source.bufnr
 
 	-- Create namespace for virtual text
@@ -216,6 +218,17 @@ function M._execute_inline(selection, action, source)
 			vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
 		end,
 	})
+end
+
+--- Build project context string from CLAUDE.md if it exists.
+---@return string
+function M._build_project_context()
+	local utils = require("solomon.utils")
+	local claude_md = utils.read_claude_md()
+	if claude_md then
+		return "Project conventions (from CLAUDE.md):\n```\n" .. claude_md .. "\n```\n\n"
+	end
+	return ""
 end
 
 --- Extract the first code block from a markdown response.
