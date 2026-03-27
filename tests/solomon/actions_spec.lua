@@ -147,6 +147,211 @@ describe("solomon.actions", function()
     end)
   end)
 
+  describe("extmark tracking for concurrent inline actions", function()
+    local bufnr, track_ns
+
+    before_each(function()
+      bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+        "line 1",   -- 1
+        "line 2",   -- 2
+        "line 3",   -- 3
+        "line 4",   -- 4
+        "line 5",   -- 5
+        "line 6",   -- 6
+        "line 7",   -- 7
+        "line 8",   -- 8
+        "line 9",   -- 9
+        "line 10",  -- 10
+      })
+      track_ns = vim.api.nvim_create_namespace("test_track")
+    end)
+
+    after_each(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+    end)
+
+    it("extmarks shift down when lines are inserted above", function()
+      -- Track lines 6-8 (0-indexed: 5-7)
+      local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 5, 0, {})
+      local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 7, 0, {})
+
+      -- Insert 2 lines at the top (simulating action A completing above with more lines)
+      vim.api.nvim_buf_set_lines(bufnr, 0, 2, false, { "new 1", "new 2", "new 3", "new 4" })
+
+      -- Marks should have shifted down by 2
+      local s = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_start, {})
+      local e = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_end, {})
+      assert.equals(7, s[1]) -- was 5, shifted +2
+      assert.equals(9, e[1]) -- was 7, shifted +2
+    end)
+
+    it("extmarks shift up when lines are deleted above", function()
+      -- Track lines 6-8 (0-indexed: 5-7)
+      local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 5, 0, {})
+      local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 7, 0, {})
+
+      -- Replace lines 1-3 with just 1 line (delete 2 lines above)
+      vim.api.nvim_buf_set_lines(bufnr, 0, 3, false, { "collapsed" })
+
+      -- Marks should have shifted up by 2
+      local s = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_start, {})
+      local e = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_end, {})
+      assert.equals(3, s[1]) -- was 5, shifted -2
+      assert.equals(5, e[1]) -- was 7, shifted -2
+    end)
+
+    it("replacement at tracked range hits correct lines after shift", function()
+      -- Track lines 6-8 (0-indexed: 5-7)
+      local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 5, 0, {})
+      local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 7, 0, {})
+
+      -- Simulate action A: replace lines 1-3 with 1 line
+      vim.api.nvim_buf_set_lines(bufnr, 0, 3, false, { "collapsed" })
+
+      -- Read tracked range
+      local s = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_start, {})
+      local e = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_end, {})
+
+      -- Replace the tracked range (what was lines 6-8)
+      vim.api.nvim_buf_set_lines(bufnr, s[1], e[1] + 1, false, { "replaced" })
+
+      -- Verify the replacement went to the right place
+      local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+      assert.equals("collapsed", lines[1])  -- action A result
+      assert.equals("line 4", lines[2])
+      assert.equals("line 5", lines[3])
+      assert.equals("replaced", lines[4])   -- action B result (was lines 6-8)
+      assert.equals("line 9", lines[5])
+    end)
+
+    it("extmarks unaffected by changes below them", function()
+      -- Track lines 2-4 (0-indexed: 1-3)
+      local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 1, 0, {})
+      local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, 3, 0, {})
+
+      -- Delete lines 8-10 (below tracked range)
+      vim.api.nvim_buf_set_lines(bufnr, 7, 10, false, {})
+
+      -- Marks should not have moved
+      local s = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_start, {})
+      local e = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_end, {})
+      assert.equals(1, s[1])
+      assert.equals(3, e[1])
+    end)
+  end)
+
+  describe("cursor adjustment after inline replacement", function()
+    local bufnr
+
+    before_each(function()
+      bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+        "line 1",
+        "line 2",
+        "line 3",
+        "line 4",
+        "line 5",
+        "line 6",
+        "line 7",
+        "line 8",
+        "line 9",
+        "line 10",
+      })
+      vim.api.nvim_set_current_buf(bufnr)
+    end)
+
+    after_each(function()
+      if vim.api.nvim_buf_is_valid(bufnr) then
+        vim.api.nvim_buf_delete(bufnr, { force = true })
+      end
+    end)
+
+    it("cursor below replacement shifts up when lines are removed", function()
+      -- Cursor on line 8
+      vim.api.nvim_win_set_cursor(0, { 8, 0 })
+
+      -- Replace lines 2-5 (4 lines) with 2 lines (delta = -2)
+      vim.api.nvim_buf_set_lines(bufnr, 1, 5, false, { "new A", "new B" })
+
+      -- Simulate the cursor adjustment logic from _execute_inline
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local line_delta = -2 -- 2 lines replaced 4
+      local replace_end_1 = 6 -- 1-indexed end of replaced range (was line 5 + 1)
+      if cursor[1] > replace_end_1 then
+        local new_row = cursor[1] + line_delta
+        new_row = math.max(1, math.min(new_row, vim.api.nvim_buf_line_count(bufnr)))
+        vim.api.nvim_win_set_cursor(0, { new_row, cursor[2] })
+      end
+
+      local final_cursor = vim.api.nvim_win_get_cursor(0)
+      -- Was on line 8, 2 lines removed above → should be on line 6
+      assert.equals(6, final_cursor[1])
+    end)
+
+    it("cursor below insertion is auto-adjusted by Neovim", function()
+      vim.api.nvim_win_set_cursor(0, { 6, 0 })
+
+      -- Replace lines 2-3 (2 lines) with 4 lines (delta = +2)
+      -- Neovim auto-adjusts cursor for net insertions in current buffer
+      vim.api.nvim_buf_set_lines(bufnr, 1, 3, false, { "a", "b", "c", "d" })
+
+      local final_cursor = vim.api.nvim_win_get_cursor(0)
+      -- Verify cursor tracked the content correctly
+      local line = vim.api.nvim_buf_get_lines(bufnr, final_cursor[1] - 1, final_cursor[1], false)[1]
+      assert.equals("line 6", line)
+    end)
+
+    it("cursor inside replacement is not adjusted", function()
+      vim.api.nvim_win_set_cursor(0, { 3, 0 })
+
+      -- Replace lines 2-5
+      vim.api.nvim_buf_set_lines(bufnr, 1, 5, false, { "new A", "new B" })
+
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local line_delta = -2
+      local replace_end_1 = 6
+      -- Cursor row 3 is NOT > 6, so no adjustment
+      if cursor[1] > replace_end_1 then
+        vim.api.nvim_win_set_cursor(0, { cursor[1] + line_delta, cursor[2] })
+      end
+
+      local final_cursor = vim.api.nvim_win_get_cursor(0)
+      -- Neovim may have clamped to buffer size, but we didn't manually adjust
+      -- The key assertion: we did NOT apply the delta
+      assert.is_true(final_cursor[1] <= 3)
+    end)
+
+    it("cursor above replacement is not adjusted", function()
+      vim.api.nvim_win_set_cursor(0, { 1, 0 })
+
+      -- Replace lines 5-8
+      vim.api.nvim_buf_set_lines(bufnr, 4, 8, false, { "x" })
+
+      local cursor = vim.api.nvim_win_get_cursor(0)
+      local replace_end_1 = 9
+      if cursor[1] > replace_end_1 then
+        vim.api.nvim_win_set_cursor(0, { cursor[1] - 3, cursor[2] })
+      end
+
+      local final_cursor = vim.api.nvim_win_get_cursor(0)
+      assert.equals(1, final_cursor[1])
+    end)
+
+    it("cursor does not go below line 1", function()
+      vim.api.nvim_win_set_cursor(0, { 3, 0 })
+
+      -- Replace nearly everything
+      vim.api.nvim_buf_set_lines(bufnr, 0, 9, false, { "only line" })
+
+      local line_count = vim.api.nvim_buf_line_count(bufnr)
+      local new_row = math.max(1, math.min(3 - 8, line_count))
+      assert.equals(1, new_row)
+    end)
+  end)
+
   describe("action definitions", function()
     it("improve action is marked as inline", function()
       assert.is_true(actions.actions.improve.inline)

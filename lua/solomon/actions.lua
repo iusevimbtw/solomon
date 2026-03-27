@@ -156,8 +156,22 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	end
 	local bufnr = source.bufnr
 
-	-- Create unique namespace per invocation so concurrent spinners don't interfere
+	-- Create unique namespaces per invocation so concurrent actions don't interfere
 	local ns = vim.api.nvim_create_namespace("solomon_inline_" .. vim.uv.hrtime())
+	local track_ns = vim.api.nvim_create_namespace("solomon_track_" .. vim.uv.hrtime())
+
+	-- Place tracking extmarks that auto-adjust when lines above shift
+	local mark_start = vim.api.nvim_buf_set_extmark(bufnr, track_ns, source.start_line - 1, 0, {})
+	local mark_end = vim.api.nvim_buf_set_extmark(bufnr, track_ns, source.end_line - 1, 0, {
+		right_gravity = false, -- stays at end of range, not pushed down by edits at this line
+	})
+
+	-- Helper to read current tracked positions (0-indexed)
+	local function get_tracked_range()
+		local s = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_start, {})
+		local e = vim.api.nvim_buf_get_extmark_by_id(bufnr, track_ns, mark_end, {})
+		return s[1], e[1] -- 0-indexed rows
+	end
 
 	-- Add "Thinking..." virtual lines before and after the selection
 	local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
@@ -166,8 +180,8 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	local extmark_below = nil
 
 	local function set_loader_extmarks()
+		local start_row, end_row = get_tracked_range()
 		local spinner = spinner_frames[frame_idx]
-		-- Update extmarks in-place using their IDs (avoids clear+recreate flicker)
 		local above_opts = {
 			virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
 			virt_lines_above = true,
@@ -181,8 +195,8 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 		if extmark_below then
 			below_opts.id = extmark_below
 		end
-		extmark_above = vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, above_opts)
-		extmark_below = vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, below_opts)
+		extmark_above = vim.api.nvim_buf_set_extmark(bufnr, ns, start_row, 0, above_opts)
+		extmark_below = vim.api.nvim_buf_set_extmark(bufnr, ns, end_row, 0, below_opts)
 	end
 
 	set_loader_extmarks()
@@ -203,6 +217,16 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 		end)
 	)
 
+	local function cleanup()
+		timer:stop()
+		if not timer:is_closing() then
+			timer:close()
+		end
+		vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+		pcall(vim.api.nvim_buf_del_extmark, bufnr, track_ns, mark_start)
+		pcall(vim.api.nvim_buf_del_extmark, bufnr, track_ns, mark_end)
+	end
+
 	-- Accumulate the full response
 	local accumulated = ""
 
@@ -212,18 +236,13 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 			accumulated = accumulated .. token
 		end,
 		on_done = function(result)
-			-- Stop spinner
-			timer:stop()
-			timer:close()
-			vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-
+			cleanup()
 			require("solomon.statusline").record_request(result)
 
 			-- Extract code from the response (find first code block)
 			local code = M._extract_code_block(accumulated)
 			if not code then
 				vim.notify("[solomon] No code block found in response — opening response window", vim.log.levels.WARN)
-				-- Fallback: show full response in response window
 				M._send_to_claude(full_prompt, source)
 				return
 			end
@@ -234,24 +253,35 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 			local original_indent = utils.detect_indent(selection.lines)
 			new_lines = utils.reindent(new_lines, original_indent)
 
-			-- Replace the selection in the source buffer
+			-- Read current tracked positions (adjusted for any line changes above)
 			if vim.api.nvim_buf_is_valid(bufnr) then
-				vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
+				local start_row, end_row = get_tracked_range()
+				local orig_count = end_row - start_row + 1
+				local line_delta = #new_lines - orig_count
+
+				-- Capture cursor before replacement
+				local cursor = vim.api.nvim_win_get_cursor(0)
+				local cursor_row = cursor[1] -- 1-indexed
+				local cursor_col = cursor[2]
+				local replace_end_1 = end_row + 1 -- 1-indexed end of replaced range
+
+				vim.api.nvim_buf_set_lines(bufnr, start_row, end_row + 1, false, new_lines)
+
+				-- Adjust cursor if it was below the replaced range
+				if cursor_row > replace_end_1 then
+					local new_row = cursor_row + line_delta
+					new_row = math.max(1, math.min(new_row, vim.api.nvim_buf_line_count(bufnr)))
+					pcall(vim.api.nvim_win_set_cursor, 0, { new_row, cursor_col })
+				end
+
 				vim.notify(
-					string.format(
-						"[solomon] %s: %d → %d lines",
-						action.name,
-						source.end_line - source.start_line + 1,
-						#new_lines
-					),
+					string.format("[solomon] %s: %d → %d lines", action.name, orig_count, #new_lines),
 					vim.log.levels.INFO
 				)
 			end
 		end,
 		on_error = function(err)
-			timer:stop()
-			timer:close()
-			vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+			cleanup()
 			vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
 		end,
 	})
