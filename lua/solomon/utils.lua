@@ -2,7 +2,7 @@ local M = {}
 
 --- Get the visual selection text and metadata.
 --- Must be called while visual selection is active or just after.
----@return {lines: string[], filetype: string, filename: string, start_line: integer, end_line: integer}|nil
+---@return {lines: string[], filetype: string, filename: string, filepath: string, start_line: integer, end_line: integer}|nil
 function M.get_visual_selection()
   -- Exit visual mode to set the '< '> marks for the current selection
   local mode = vim.fn.mode()

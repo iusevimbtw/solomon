@@ -81,6 +81,33 @@ function M.open(opts)
 
   layout:mount()
 
+  -- Resize and reposition on terminal/screen resize
+  local augroup = vim.api.nvim_create_augroup("solomon_prompt_resize", { clear = true })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = augroup,
+    callback = function()
+      if not input_popup.winid or not vim.api.nvim_win_is_valid(input_popup.winid) then
+        vim.api.nvim_del_augroup_by_id(augroup)
+        return
+      end
+      layout:update({
+        relative = "editor",
+        position = "50%",
+        size = {
+          width = "70%",
+          height = context_height + input_height + 4,
+        },
+      })
+    end,
+  })
+
+  -- Clean up autocmd when layout is unmounted
+  local orig_unmount = layout.unmount
+  layout.unmount = function(self, ...)
+    pcall(vim.api.nvim_del_augroup_by_id, augroup)
+    return orig_unmount(self, ...)
+  end
+
   -- Set context content (read-only)
   vim.api.nvim_buf_set_lines(context_popup.bufnr, 0, -1, false, opts.context_lines)
   vim.bo[context_popup.bufnr].modifiable = false

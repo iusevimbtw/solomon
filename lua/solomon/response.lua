@@ -61,6 +61,26 @@ function M.open(source)
 
   popup:mount()
 
+  -- Resize and reposition on terminal/screen resize
+  local augroup = vim.api.nvim_create_augroup("solomon_response_resize", { clear = true })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = augroup,
+    callback = function()
+      if not popup.winid or not vim.api.nvim_win_is_valid(popup.winid) then
+        vim.api.nvim_del_augroup_by_id(augroup)
+        return
+      end
+      popup:update_layout({
+        relative = "editor",
+        position = "50%",
+        size = {
+          width = "80%",
+          height = "70%",
+        },
+      })
+    end,
+  })
+
   local win = {
     popup = popup,
     buf = popup.bufnr,
@@ -184,6 +204,8 @@ function M.close()
     if win.job then
       win.job.cancel()
     end
+    pcall(vim.api.nvim_del_augroup_by_id,
+      vim.api.nvim_create_augroup("solomon_response_resize", { clear = true }))
     pcall(function()
       win.popup:unmount()
     end)
@@ -236,30 +258,14 @@ end
 function M.apply_code_block()
   local win = M.current
   if not win then
-    vim.notify("[solomon] DEBUG: no current window", vim.log.levels.WARN)
     return
   end
-
-  local cursor = vim.api.nvim_win_get_cursor(win.popup.winid)
-  vim.notify(
-    string.format("[solomon] DEBUG: cursor at line %d, total lines: %d, source: %s",
-      cursor[1], #win.lines, win.source and "yes" or "nil"),
-    vim.log.levels.INFO
-  )
 
   local block = M._find_code_block_at_cursor()
   if not block then
-    -- Show nearby lines for debugging
-    local cl = cursor[1]
-    local context = {}
-    for i = math.max(1, cl - 2), math.min(#win.lines, cl + 2) do
-      table.insert(context, string.format("L%d: %s", i, win.lines[i]:sub(1, 60)))
-    end
-    vim.notify("[solomon] No code block under cursor.\n" .. table.concat(context, "\n"), vim.log.levels.WARN)
+    vim.notify("[solomon] No code block under cursor", vim.log.levels.WARN)
     return
   end
-
-  vim.notify(string.format("[solomon] DEBUG: found block, %d lines, lang=%s", #block.lines, block.lang or "nil"), vim.log.levels.INFO)
 
   local source = win.source
   if not source then
