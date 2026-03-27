@@ -368,17 +368,23 @@ function M.apply_code_block()
     return
   end
 
+  -- Match indentation of the original source lines
+  local utils = require("solomon.utils")
+  local original_lines = vim.api.nvim_buf_get_lines(source.bufnr, source.start_line - 1, source.end_line, false)
+  local target_indent = utils.detect_indent(original_lines)
+  local reindented = utils.reindent(block.lines, target_indent)
+
   -- Replace the original selection in the source buffer
   vim.api.nvim_buf_set_lines(
     source.bufnr,
     source.start_line - 1,
     source.end_line,
     false,
-    block.lines
+    reindented
   )
 
   -- Update source range for subsequent applies
-  source.end_line = source.start_line + #block.lines - 1
+  source.end_line = source.start_line + #reindented - 1
 
   local msg = string.format("[solomon] Applied %d lines to %s:%d", #block.lines, source.filename, source.start_line)
 

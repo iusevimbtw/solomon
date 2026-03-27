@@ -63,4 +63,45 @@ function M.format_context(lines, filetype, filename, start_line)
   return string.format("File: %s\n```%s\n%s\n```", header, filetype, code)
 end
 
+--- Detect the base indentation of a set of lines (smallest leading whitespace).
+---@param lines string[]
+---@return string indent The common leading whitespace prefix
+function M.detect_indent(lines)
+  local min_indent = nil
+  for _, line in ipairs(lines) do
+    -- Skip empty lines
+    if line:match("%S") then
+      local indent = line:match("^(%s*)")
+      if min_indent == nil or #indent < #min_indent then
+        min_indent = indent
+      end
+    end
+  end
+  return min_indent or ""
+end
+
+--- Re-indent lines to match a target base indentation.
+--- Strips existing common indent from new_lines, then prepends target_indent.
+---@param new_lines string[]
+---@param target_indent string
+---@return string[]
+function M.reindent(new_lines, target_indent)
+  -- Find common indent in new_lines
+  local current_indent = M.detect_indent(new_lines)
+  local strip_len = #current_indent
+
+  local result = {}
+  for _, line in ipairs(new_lines) do
+    if line:match("%S") then
+      -- Strip current common indent, add target indent
+      local stripped = line:sub(strip_len + 1)
+      table.insert(result, target_indent .. stripped)
+    else
+      -- Preserve empty lines
+      table.insert(result, "")
+    end
+  end
+  return result
+end
+
 return M

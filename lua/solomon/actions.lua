@@ -196,6 +196,10 @@ function M._execute_inline(selection, action, source)
 
       local new_lines = vim.split(code, "\n", { plain = true })
 
+      -- Match indentation of the original selection
+      local original_indent = utils.detect_indent(selection.lines)
+      new_lines = utils.reindent(new_lines, original_indent)
+
       -- Replace the selection in the source buffer
       if vim.api.nvim_buf_is_valid(bufnr) then
         vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
