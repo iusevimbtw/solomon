@@ -1,5 +1,3 @@
-local Popup = require("nui.popup")
-
 local M = {}
 
 ---@class solomon.SourceInfo
@@ -29,6 +27,7 @@ function M.open(source)
 
   local bottom_hints = " q: close | <C-c>: cancel | ga: apply | gy: yank block "
 
+  local Popup = require("nui.popup")
   local popup = Popup({
     enter = true,
     focusable = true,
@@ -207,11 +206,12 @@ function M._find_code_block_at_cursor()
   local current_start, current_lang
 
   for i, line in ipairs(win.lines) do
-    if line:match("^```") and not in_block then
+    local trimmed = line:match("^%s*(.*)")
+    if trimmed:match("^```") and not in_block then
       in_block = true
       current_start = i + 1
-      current_lang = line:match("^```(%S+)")
-    elseif line:match("^```") and in_block then
+      current_lang = trimmed:match("^```(%S+)")
+    elseif trimmed:match("^```") and in_block then
       in_block = false
       -- Cursor on the fence lines counts too
       if cursor_line >= current_start - 1 and cursor_line <= i then
@@ -236,18 +236,39 @@ end
 function M.apply_code_block()
   local win = M.current
   if not win then
+    vim.notify("[solomon] DEBUG: no current window", vim.log.levels.WARN)
     return
   end
+
+  local cursor = vim.api.nvim_win_get_cursor(win.popup.winid)
+  vim.notify(
+    string.format("[solomon] DEBUG: cursor at line %d, total lines: %d, source: %s",
+      cursor[1], #win.lines, win.source and "yes" or "nil"),
+    vim.log.levels.INFO
+  )
 
   local block = M._find_code_block_at_cursor()
   if not block then
-    vim.notify("[solomon] No code block under cursor", vim.log.levels.WARN)
+    -- Show nearby lines for debugging
+    local cl = cursor[1]
+    local context = {}
+    for i = math.max(1, cl - 2), math.min(#win.lines, cl + 2) do
+      table.insert(context, string.format("L%d: %s", i, win.lines[i]:sub(1, 60)))
+    end
+    vim.notify("[solomon] No code block under cursor.\n" .. table.concat(context, "\n"), vim.log.levels.WARN)
     return
   end
 
+  vim.notify(string.format("[solomon] DEBUG: found block, %d lines, lang=%s", #block.lines, block.lang or "nil"), vim.log.levels.INFO)
+
   local source = win.source
-  if not source or not vim.api.nvim_buf_is_valid(source.bufnr) then
-    -- No source context — fall back to yank
+  if not source then
+    vim.notify("[solomon] No source buffer context — copying to clipboard instead", vim.log.levels.INFO)
+    M.yank_code_block()
+    return
+  end
+  if not vim.api.nvim_buf_is_valid(source.bufnr) then
+    vim.notify("[solomon] Source buffer no longer valid — copying to clipboard instead", vim.log.levels.INFO)
     M.yank_code_block()
     return
   end
@@ -264,10 +285,13 @@ function M.apply_code_block()
   -- Update source range for subsequent applies
   source.end_line = source.start_line + #block.lines - 1
 
-  vim.notify(
-    string.format("[solomon] Applied %d lines to %s:%d", #block.lines, source.filename, source.start_line),
-    vim.log.levels.INFO
-  )
+  local msg = string.format("[solomon] Applied %d lines to %s:%d", #block.lines, source.filename, source.start_line)
+
+  -- Close response window and focus the source buffer so user sees the change
+  M.close()
+  vim.api.nvim_set_current_buf(source.bufnr)
+  pcall(vim.api.nvim_win_set_cursor, 0, { source.start_line, 0 })
+  vim.notify(msg, vim.log.levels.INFO)
 end
 
 --- Yank the code block under cursor to clipboard.
