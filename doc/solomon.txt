@@ -1,0 +1,301 @@
+*solomon.txt*    Claude Code integration for Neovim
+
+Author: solomon.nvim contributors
+License: MIT
+
+==============================================================================
+CONTENTS                                                    *solomon-contents*
+
+  1. Introduction ......................... |solomon-introduction|
+  2. Requirements ......................... |solomon-requirements|
+  3. Installation ......................... |solomon-installation|
+  4. Configuration ........................ |solomon-configuration|
+  5. Commands ............................. |solomon-commands|
+  6. Keymaps .............................. |solomon-keymaps|
+  7. Actions .............................. |solomon-actions|
+  8. MCP Server ........................... |solomon-mcp|
+  9. Sessions ............................. |solomon-sessions|
+  10. Git Integration ..................... |solomon-git|
+  11. Statusline .......................... |solomon-statusline|
+  12. Health Check ........................ |solomon-health|
+
+==============================================================================
+1. INTRODUCTION                                         *solomon-introduction*
+
+Solomon is a Neovim plugin that deeply integrates Claude Code CLI into your
+editor. It provides a hybrid architecture combining terminal embedding with
+an MCP bridge for bidirectional communication.
+
+Features:
+- Toggle Claude Code CLI in a floating window or split
+- Visual selection actions (explain, refactor, fix, optimize, tests, ask)
+- Streaming response display with code block apply
+- MCP server for bidirectional editor integration
+- Session management with picker
+- Git integration (review, commit messages, blame)
+- Lualine statusline component
+
+==============================================================================
+2. REQUIREMENTS                                         *solomon-requirements*
+
+Required:~
+- Neovim >= 0.11.0
+- Claude Code CLI (`claude`) in PATH
+- nui.nvim (prompt window UI)
+
+Optional:~
+- snacks.nvim — terminal, picker, notifications
+- lualine.nvim — statusline component
+- which-key.nvim — keymap discovery
+- gitsigns.nvim — git hunk context
+
+==============================================================================
+3. INSTALLATION                                         *solomon-installation*
+
+With lazy.nvim:~
+>lua
+  {
+    "your-username/solomon.nvim",
+    dependencies = {
+      "MunifTanjim/nui.nvim",
+    },
+    opts = {},
+    keys = {
+      { "<leader>aa", desc = "Solomon: Toggle Claude Code" },
+      { "<leader>as", desc = "Solomon: Browse sessions" },
+    },
+  }
+<
+
+Local development:~
+>lua
+  { dir = "/path/to/solomon", opts = {} }
+<
+
+==============================================================================
+4. CONFIGURATION                                       *solomon-configuration*
+
+Call `require("solomon").setup(opts)` with any of these options:
+>lua
+  require("solomon").setup({
+    terminal = {
+      style = "float",           -- "float" or "split"
+      float_opts = {
+        width = 0.8,             -- 0-1 for percentage
+        height = 0.8,
+        border = "rounded",
+      },
+      split_opts = {
+        position = "right",      -- "left", "right", "top", "bottom"
+        size = 0.4,
+      },
+      auto_close = true,         -- close terminal when CLI exits
+      auto_insert = true,        -- enter insert mode on open
+    },
+    keymaps = {
+      toggle = "<leader>aa",
+      ask = "<leader>ak",
+      explain = "<leader>ae",
+      refactor = "<leader>ar",
+      fix = "<leader>af",
+      optimize = "<leader>ao",
+      tests = "<leader>at",
+      sessions = "<leader>as",
+      continue_session = "<leader>ac",
+      review = "<leader>aR",
+      commit = "<leader>am",
+      blame = "<leader>ab",
+    },
+    cli = {
+      cmd = "claude",            -- path to claude binary
+      model = nil,               -- model override (e.g. "opus", "sonnet")
+      args = {},                 -- extra CLI arguments
+    },
+    mcp = {
+      enabled = true,            -- enable MCP server
+      auto_start = true,         -- start on plugin setup
+    },
+  })
+<
+
+Set any keymap to `""` to disable it.
+
+==============================================================================
+5. COMMANDS                                                 *solomon-commands*
+
+:Solomon [subcommand]                                             *:Solomon*
+
+Terminal:~
+  `:Solomon`              Toggle Claude Code terminal
+  `:Solomon toggle`       Toggle Claude Code terminal
+  `:Solomon open`         Open Claude Code terminal
+  `:Solomon close`        Close Claude Code terminal
+
+Git:~
+  `:Solomon review`       Review unstaged git diff
+  `:Solomon review-staged` Review staged git diff
+  `:Solomon review-hunk`  Review current git hunk
+  `:Solomon commit`       Generate commit message from staged changes
+  `:Solomon blame`        Explain git blame for current line
+
+Sessions:~
+  `:Solomon sessions`     Browse all sessions (picker)
+  `:Solomon sessions-project` Browse sessions for current project
+  `:Solomon continue`     Continue most recent session
+  `:Solomon resume [id]`  Resume session by ID, or open picker
+
+MCP:~
+  `:Solomon mcp-start`    Start the MCP server
+  `:Solomon mcp-stop`     Stop the MCP server
+  `:Solomon mcp-status`   Show MCP server status
+
+==============================================================================
+6. KEYMAPS                                                   *solomon-keymaps*
+
+Default keymaps (all under `<leader>a` prefix):
+
+Normal mode:~
+  `<leader>aa`   Toggle Claude Code terminal
+  `<leader>as`   Browse sessions
+  `<leader>ac`   Continue last session
+  `<leader>aR`   Review git diff
+  `<leader>am`   Generate commit message
+  `<leader>ab`   Explain git blame
+
+Visual mode:~
+  `<leader>ak`   Ask Claude (free-form prompt)
+  `<leader>ae`   Explain selected code
+  `<leader>ar`   Refactor selected code
+  `<leader>af`   Fix selected code
+  `<leader>ao`   Optimize selected code
+  `<leader>at`   Generate tests for selected code
+  `<leader>ab`   Explain git blame for selection
+
+Response window:~
+  `q`            Close response window
+  `<Esc>`        Close response window
+  `<C-c>`        Cancel streaming request
+  `ga`           Apply code block under cursor to source
+  `gy`           Yank code block under cursor to clipboard
+  `gd`           Open diff view of code block vs original
+
+Diff view:~
+  `<CR>`         Accept proposed changes
+  `q`            Reject and close diff
+  `<Esc>`        Close diff
+
+Prompt window:~
+  `<CR>`         Submit prompt (normal mode)
+  `<C-CR>`       Submit prompt (insert mode)
+  `<Esc>`        Cancel
+  `<Tab>`        Switch between context and input panes
+
+==============================================================================
+7. ACTIONS                                                   *solomon-actions*
+
+Visual selection actions send the selected code to Claude with a predefined
+prompt template. The response streams into a floating markdown window.
+
+Available actions:~
+  `explain`    — Explain the selected code
+  `refactor`   — Suggest refactoring improvements
+  `fix`        — Find and fix bugs
+  `optimize`   — Optimize for performance
+  `tests`      — Generate test cases
+  `ask`        — Free-form prompt with code context
+
+Actions use `claude -p --output-format stream-json` for real-time streaming.
+
+==============================================================================
+8. MCP SERVER                                                   *solomon-mcp*
+
+Solomon runs a WebSocket MCP (Model Context Protocol) server that allows
+Claude Code to interact with your Neovim editor bidirectionally.
+
+The server:~
+- Starts automatically on plugin setup (configurable)
+- Listens on a random localhost port
+- Writes a lock file to `~/.claude/ide/<port>.lock`
+- Claude Code discovers it automatically
+
+MCP Tools (Claude can call these):~
+  `nvim_get_open_buffers`   List all loaded buffers
+  `nvim_get_buffer`         Read buffer contents by path
+  `nvim_get_current_buffer` Get current buffer with cursor position
+  `nvim_open_file`          Open a file in the editor
+  `nvim_edit_with_diff`     Propose edits with diff review
+  `nvim_get_diagnostics`    Read LSP diagnostics
+  `nvim_get_cursor_context` Get code around cursor
+
+When Claude proposes an edit via `nvim_edit_with_diff`, a side-by-side diff
+view opens. Press `<CR>` to accept or `q` to reject.
+
+==============================================================================
+9. SESSIONS                                                 *solomon-sessions*
+
+Browse and resume Claude Code conversations from within Neovim.
+
+Sessions are read from `~/.claude/history.jsonl`. The picker shows:
+- Date and time
+- Project directory
+- First message preview
+
+The preview panel shows the first 10 messages of the selected session.
+
+==============================================================================
+10. GIT INTEGRATION                                            *solomon-git*
+
+Git-aware features that send context to Claude:
+
+`:Solomon review`~
+  Sends the current `git diff` to Claude for code review.
+
+`:Solomon review-staged`~
+  Sends `git diff --staged` for review.
+
+`:Solomon commit`~
+  Sends staged diff and recent commit log. Claude generates a commit
+  message in conventional commit format.
+
+`:Solomon blame`~
+  Runs `git blame --porcelain` on the current line or visual selection
+  and asks Claude to explain the history.
+
+If gitsigns.nvim is available, `:Solomon review-hunk` reviews just the
+current git hunk.
+
+==============================================================================
+11. STATUSLINE                                           *solomon-statusline*
+
+Solomon provides a lualine component showing MCP status, model, and
+cumulative cost.
+
+Add to your lualine config:~
+>lua
+  lualine_x = {
+    require("solomon.statusline").lualine(),
+  }
+<
+
+Or use the component function directly:~
+>lua
+  lualine_x = {
+    {
+      require("solomon.statusline").component(),
+      cond = require("solomon.statusline").condition(),
+    },
+  }
+<
+
+==============================================================================
+12. HEALTH CHECK                                             *solomon-health*
+
+Run `:checkhealth solomon` to verify:
+- Claude CLI is installed and accessible
+- Neovim version is compatible
+- Required plugins are available
+- Optional plugins are detected
+- MCP server status
+
+==============================================================================
+vim:tw=78:ts=8:ft=help:norl:

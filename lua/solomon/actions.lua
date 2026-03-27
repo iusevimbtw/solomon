@@ -1,0 +1,210 @@
+local M = {}
+
+---@class solomon.Action
+---@field name string
+---@field prompt_template string Template with {context} placeholder
+---@field show_input boolean Whether to show the input prompt window
+
+---@type table<string, solomon.Action>
+M.actions = {
+  explain = {
+    name = "Explain",
+    prompt_template = "Explain this code clearly and concisely:\n\n{context}",
+    show_input = false,
+  },
+  refactor = {
+    name = "Refactor",
+    prompt_template = "Suggest a refactoring for this code. Show the improved version with a brief explanation of what changed and why:\n\n{context}",
+    show_input = false,
+  },
+  fix = {
+    name = "Fix",
+    prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version and explain what was wrong:\n\n{context}",
+    show_input = false,
+  },
+  optimize = {
+    name = "Optimize",
+    prompt_template = "Optimize this code for performance. Show the optimized version and explain the improvements:\n\n{context}",
+    show_input = false,
+  },
+  tests = {
+    name = "Generate Tests",
+    prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language:\n\n{context}",
+    show_input = false,
+  },
+  ask = {
+    name = "Ask",
+    prompt_template = nil, -- User provides the prompt
+    show_input = true,
+  },
+}
+
+--- Execute a predefined action on the visual selection.
+---@param action_name string
+function M.run(action_name)
+  local action = M.actions[action_name]
+  if not action then
+    vim.notify("[solomon] Unknown action: " .. action_name, vim.log.levels.ERROR)
+    return
+  end
+
+  local utils = require("solomon.utils")
+  local selection = utils.get_visual_selection()
+
+  if not selection then
+    vim.notify("[solomon] No visual selection", vim.log.levels.WARN)
+    return
+  end
+
+  -- Capture source info for later apply
+  local source = {
+    bufnr = vim.api.nvim_get_current_buf(),
+    start_line = selection.start_line,
+    end_line = selection.end_line,
+    filetype = selection.filetype,
+    filename = selection.filename,
+  }
+
+  if action.show_input then
+    M._open_prompt(selection, action, source)
+  else
+    M._execute(selection, action, nil, source)
+  end
+end
+
+--- Open the prompt window for actions that need user input.
+---@param selection table
+---@param action solomon.Action
+---@param source table
+function M._open_prompt(selection, action, source)
+  local prompt = require("solomon.prompt")
+
+  prompt.open({
+    context_lines = selection.lines,
+    filetype = selection.filetype,
+    filename = selection.filename,
+    start_line = selection.start_line,
+    on_submit = function(user_prompt, context_str)
+      local full_prompt = user_prompt .. "\n\n" .. context_str
+      M._send_to_claude(full_prompt, source)
+    end,
+  })
+end
+
+--- Execute an action directly (no prompt window needed).
+---@param selection table
+---@param action solomon.Action
+---@param extra_prompt string|nil
+---@param source table
+function M._execute(selection, action, extra_prompt, source)
+  local utils = require("solomon.utils")
+  local context_str = utils.format_context(
+    selection.lines,
+    selection.filetype,
+    selection.filename,
+    selection.start_line
+  )
+
+  local full_prompt = action.prompt_template:gsub("{context}", context_str)
+  if extra_prompt then
+    full_prompt = full_prompt .. "\n\n" .. extra_prompt
+  end
+
+  M._send_to_claude(full_prompt, source)
+end
+
+--- Send a prompt to Claude and display the streaming response.
+---@param prompt string
+---@param source table|nil Source buffer info for apply
+function M._send_to_claude(prompt, source)
+  local streaming = require("solomon.streaming")
+  local response = require("solomon.response")
+
+  local win = response.open(source)
+  response.set_status("Solomon (streaming...)")
+
+  -- Progress notification (noice.nvim will render this as a spinner)
+  local notif_id = "solomon_streaming"
+  vim.notify("Waiting for Claude...", vim.log.levels.INFO, {
+    title = "Solomon",
+    id = notif_id,
+    timeout = false,
+  })
+
+  local token_count = 0
+
+  local job = streaming.send({
+    prompt = prompt,
+    on_token = function(token)
+      response.append_token(token)
+      token_count = token_count + 1
+      -- Update progress every 10 tokens to avoid spamming
+      if token_count % 10 == 0 then
+        vim.notify("Streaming... (" .. token_count .. " chunks)", vim.log.levels.INFO, {
+          title = "Solomon",
+          id = notif_id,
+          timeout = false,
+        })
+      end
+    end,
+    on_done = function(result)
+      response.show_result_info(result)
+      require("solomon.statusline").record_request(result)
+      if win then
+        win.job = nil
+      end
+
+      -- Final notification
+      local parts = {}
+      if result.duration_ms then
+        table.insert(parts, string.format("%.1fs", result.duration_ms / 1000))
+      end
+      if result.cost_usd then
+        table.insert(parts, string.format("$%.4f", result.cost_usd))
+      end
+      vim.notify(
+        "Done" .. (#parts > 0 and " (" .. table.concat(parts, ", ") .. ")" or ""),
+        vim.log.levels.INFO,
+        { title = "Solomon", id = notif_id, timeout = 3000 }
+      )
+    end,
+    on_error = function(err)
+      response.set_status("Solomon (error)")
+      response.append_token("\n\n**Error:** " .. err)
+      vim.notify("Error: " .. err, vim.log.levels.ERROR, {
+        title = "Solomon",
+        id = notif_id,
+        timeout = 5000,
+      })
+    end,
+  })
+
+  win.job = job
+end
+
+-- Public action shortcuts
+function M.ask()
+  M.run("ask")
+end
+
+function M.explain()
+  M.run("explain")
+end
+
+function M.refactor()
+  M.run("refactor")
+end
+
+function M.fix()
+  M.run("fix")
+end
+
+function M.optimize()
+  M.run("optimize")
+end
+
+function M.tests()
+  M.run("tests")
+end
+
+return M
