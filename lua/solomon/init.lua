@@ -176,7 +176,7 @@ function M.register_keymaps()
 			{ km.continue_session, icon = "▶️" },
 			{ km.review, icon = "󰊢" },
 			{ km.commit, icon = "󰜘" },
-			{ km.blame, icon = "󰋽" },
+			{ km.blame, icon = "󰋽", mode = { "n", "v" } },
 		})
 	end
 end
