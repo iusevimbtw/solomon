@@ -20,13 +20,15 @@ M.actions = {
 	},
 	fix = {
 		name = "Fix",
-		prompt_template = "Find and fix any bugs, logic errors, or issues in this code. Follow the project conventions described below if provided. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{project_context}{context}",
+		prompt_template = "Find and fix the bugs and issues in this code. {diagnostics}Follow the project conventions if provided. Respond with ONLY the fixed code in a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
 		show_input = false,
+		inline = true,
 	},
 	optimize = {
 		name = "Optimize",
-		prompt_template = "Optimize this code for performance and efficiency. Follow the project conventions described below if provided. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{project_context}{context}",
+		prompt_template = "Optimize this code for performance and efficiency. Follow the project conventions if provided. Respond with ONLY the optimized code in a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
 		show_input = false,
+		inline = true,
 	},
 	tests = {
 		name = "Generate Tests",
@@ -50,10 +52,14 @@ function M.run(action_name)
 	end
 
 	local utils = require("solomon.utils")
-	local selection = utils.get_visual_selection()
 
+	-- Try visual selection first, fall back to treesitter context in normal mode
+	local selection = utils.get_visual_selection()
 	if not selection then
-		vim.notify("[solomon] No visual selection", vim.log.levels.WARN)
+		selection = utils.get_treesitter_context()
+	end
+	if not selection then
+		vim.notify("[solomon] No selection or function at cursor", vim.log.levels.WARN)
 		return
 	end
 
@@ -105,7 +111,11 @@ function M._execute(selection, action, extra_prompt, source)
 		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
 	local project_context = M._build_project_context()
-	local full_prompt = action.prompt_template:gsub("{project_context}", project_context):gsub("{context}", context_str)
+	local diagnostics = M._build_diagnostics_context(source)
+	local full_prompt = action.prompt_template
+		:gsub("{diagnostics}", diagnostics)
+		:gsub("{project_context}", project_context)
+		:gsub("{context}", context_str)
 	if extra_prompt then
 		full_prompt = full_prompt .. "\n\n" .. extra_prompt
 	end
@@ -125,7 +135,11 @@ function M._execute_inline(selection, action, source)
 		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
 	local project_context = M._build_project_context()
-	local full_prompt = action.prompt_template:gsub("{project_context}", project_context):gsub("{context}", context_str)
+	local diagnostics = M._build_diagnostics_context(source)
+	local full_prompt = action.prompt_template
+		:gsub("{diagnostics}", diagnostics)
+		:gsub("{project_context}", project_context)
+		:gsub("{context}", context_str)
 	local bufnr = source.bufnr
 
 	-- Create namespace for virtual text
@@ -203,7 +217,8 @@ function M._execute_inline(selection, action, source)
 				vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
 				vim.notify(
 					string.format(
-						"[solomon] Refactored %d → %d lines",
+						"[solomon] %s: %d → %d lines",
+						action.name,
 						source.end_line - source.start_line + 1,
 						#new_lines
 					),
@@ -218,6 +233,18 @@ function M._execute_inline(selection, action, source)
 			vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
 		end,
 	})
+end
+
+--- Build diagnostics context string for the source range.
+---@param source table
+---@return string
+function M._build_diagnostics_context(source)
+	local utils = require("solomon.utils")
+	local diag_text = utils.get_diagnostics_for_range(source.bufnr, source.start_line, source.end_line)
+	if diag_text then
+		return "The following LSP diagnostics were found in this code:\n" .. diag_text .. "\n\n"
+	end
+	return ""
 end
 
 --- Build project context string from CLAUDE.md if it exists.

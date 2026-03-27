@@ -131,4 +131,97 @@ function M.reindent(new_lines, target_indent)
   return result
 end
 
+--- Get the enclosing function/method/block at cursor using treesitter.
+--- Returns the same format as get_visual_selection() for seamless fallback.
+---@return {lines: string[], filetype: string, filename: string, filepath: string, start_line: integer, end_line: integer}|nil
+function M.get_treesitter_context()
+  local ok, node = pcall(vim.treesitter.get_node)
+  if not ok or not node then
+    return nil
+  end
+
+  -- Walk up to find a function, method, or meaningful block node
+  local target_types = {
+    -- Lua
+    "function_declaration", "function_definition", "local_function",
+    -- Go
+    "function_declaration", "method_declaration",
+    -- Python
+    "function_definition", "class_definition",
+    -- TypeScript/JavaScript
+    "function_declaration", "method_definition", "arrow_function",
+    "function", "export_statement",
+    -- Elixir
+    "call", -- def/defp/defmodule are calls in elixir treesitter
+    -- Generic
+    "function", "method",
+  }
+
+  local target_set = {}
+  for _, t in ipairs(target_types) do
+    target_set[t] = true
+  end
+
+  local current = node
+  while current do
+    if target_set[current:type()] then
+      break
+    end
+    current = current:parent()
+  end
+
+  if not current then
+    return nil
+  end
+
+  local start_row, _, end_row, _ = current:range()
+  -- treesitter is 0-indexed, convert to 1-indexed
+  local start_line = start_row + 1
+  local end_line = end_row + 1
+
+  local lines = vim.api.nvim_buf_get_lines(0, start_row, end_row + 1, false)
+  if #lines == 0 then
+    return nil
+  end
+
+  return {
+    lines = lines,
+    filetype = vim.bo.filetype,
+    filename = vim.fn.expand("%:t"),
+    filepath = vim.fn.expand("%:p"),
+    start_line = start_line,
+    end_line = end_line,
+  }
+end
+
+--- Get LSP diagnostics for a line range, formatted as text.
+---@param bufnr integer
+---@param start_line integer 1-indexed
+---@param end_line integer 1-indexed
+---@return string|nil
+function M.get_diagnostics_for_range(bufnr, start_line, end_line)
+  local diagnostics = vim.diagnostic.get(bufnr)
+  if not diagnostics or #diagnostics == 0 then
+    return nil
+  end
+
+  local severity_names = { "error", "warn", "info", "hint" }
+  local relevant = {}
+
+  for _, d in ipairs(diagnostics) do
+    local line = d.lnum + 1 -- 0-indexed to 1-indexed
+    if line >= start_line and line <= end_line then
+      local sev = severity_names[d.severity] or "unknown"
+      local source = d.source and (" (" .. d.source .. ")") or ""
+      table.insert(relevant, string.format("- Line %d: %s: %s%s", line, sev, d.message, source))
+    end
+  end
+
+  if #relevant == 0 then
+    return nil
+  end
+
+  return "LSP Diagnostics:\n" .. table.concat(relevant, "\n")
+end
+
 return M
