@@ -165,7 +165,7 @@ function M.register_keymaps()
 	if wk_ok then
 		wk.add({
 			{ "<leader>a", group = "Solomon (AI)", icon = "🤖", mode = { "n", "v" } },
-			{ km.toggle, icon = "" },
+			{ km.toggle, icon = "󰄛" },
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
 			{ km.refactor, icon = "♻️", mode = { "n", "v" } },
