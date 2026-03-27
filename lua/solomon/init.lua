@@ -174,9 +174,9 @@ function M.register_keymaps()
 			{ km.tests, icon = "🧪", mode = { "n", "v" } },
 			{ km.sessions, icon = "📋" },
 			{ km.continue_session, icon = "▶️" },
-			{ km.review, icon = "" },
-			{ km.commit, icon = "" },
-			{ km.blame, icon = "" },
+			{ km.review, icon = "󰊢" },
+			{ km.commit, icon = "󰜘" },
+			{ km.blame, icon = "󰋽" },
 		})
 	end
 end
