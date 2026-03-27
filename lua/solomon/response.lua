@@ -309,16 +309,50 @@ function M._find_code_block_at_cursor()
   return nil
 end
 
---- Apply the code block under cursor — replace original selection in source buffer.
+--- Find the first code block in the response (cursor-independent).
+---@return {start_line: integer, end_line: integer, lang: string|nil, lines: string[]}|nil
+function M._find_first_code_block()
+  local win = M.current
+  if not win then
+    return nil
+  end
+
+  local in_block = false
+  local current_start, current_lang
+
+  for i, line in ipairs(win.lines) do
+    local trimmed = line:match("^%s*(.*)")
+    if trimmed:match("^```") and not in_block then
+      in_block = true
+      current_start = i + 1
+      current_lang = trimmed:match("^```(%S+)")
+    elseif trimmed:match("^```") and in_block then
+      local code_lines = {}
+      for j = current_start, i - 1 do
+        table.insert(code_lines, win.lines[j])
+      end
+      return {
+        start_line = current_start,
+        end_line = i - 1,
+        lang = current_lang,
+        lines = code_lines,
+      }
+    end
+  end
+
+  return nil
+end
+
+--- Apply the code block — tries cursor position first, then first block in response.
 function M.apply_code_block()
   local win = M.current
   if not win then
     return
   end
 
-  local block = M._find_code_block_at_cursor()
+  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
   if not block then
-    vim.notify("[solomon] No code block under cursor", vim.log.levels.WARN)
+    vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return
   end
 
@@ -355,11 +389,11 @@ function M.apply_code_block()
   vim.notify(msg, vim.log.levels.INFO)
 end
 
---- Yank the code block under cursor to clipboard.
+--- Yank the code block to clipboard — tries cursor position first, then first block.
 function M.yank_code_block()
-  local block = M._find_code_block_at_cursor()
+  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
   if not block then
-    vim.notify("[solomon] No code block under cursor", vim.log.levels.WARN)
+    vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return
   end
 
@@ -377,9 +411,9 @@ function M.diff_code_block()
     return
   end
 
-  local block = M._find_code_block_at_cursor()
+  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
   if not block then
-    vim.notify("[solomon] No code block under cursor", vim.log.levels.WARN)
+    vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return
   end
 

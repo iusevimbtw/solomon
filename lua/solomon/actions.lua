@@ -20,17 +20,17 @@ M.actions = {
   },
   fix = {
     name = "Fix",
-    prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version and explain what was wrong:\n\n{context}",
+    prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{context}",
     show_input = false,
   },
   optimize = {
     name = "Optimize",
-    prompt_template = "Optimize this code for performance. Show the optimized version and explain the improvements:\n\n{context}",
+    prompt_template = "Optimize this code for performance. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{context}",
     show_input = false,
   },
   tests = {
     name = "Generate Tests",
-    prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language:\n\n{context}",
+    prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Put all test code in a single code block:\n\n{context}",
     show_input = false,
   },
   ask = {
