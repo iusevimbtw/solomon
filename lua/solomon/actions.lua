@@ -7,72 +7,72 @@ local M = {}
 
 ---@type table<string, solomon.Action>
 M.actions = {
-  explain = {
-    name = "Explain",
-    prompt_template = "Explain this code clearly and concisely:\n\n{context}",
-    show_input = false,
-  },
-  refactor = {
-    name = "Refactor",
-    prompt_template = "Refactor this code. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{context}",
-    show_input = false,
-    inline = true, -- Replace selection in-place instead of opening response window
-  },
-  fix = {
-    name = "Fix",
-    prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{context}",
-    show_input = false,
-  },
-  optimize = {
-    name = "Optimize",
-    prompt_template = "Optimize this code for performance. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{context}",
-    show_input = false,
-  },
-  tests = {
-    name = "Generate Tests",
-    prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Put all test code in a single code block:\n\n{context}",
-    show_input = false,
-  },
-  ask = {
-    name = "Ask",
-    prompt_template = nil, -- User provides the prompt
-    show_input = true,
-  },
+	explain = {
+		name = "Explain",
+		prompt_template = "Explain this code clearly and concisely:\n\n{context}",
+		show_input = false,
+	},
+	refactor = {
+		name = "Refactor",
+		prompt_template = "Refactor this code. Respond with ONLY the improved code inside a single code block. No explanation before or after the code block.\n\n{context}",
+		show_input = false,
+		inline = true, -- Replace selection in-place instead of opening response window
+	},
+	fix = {
+		name = "Fix",
+		prompt_template = "Find and fix any bugs or issues in this code. Show the corrected version in a single code block, then briefly explain what was wrong:\n\n{context}",
+		show_input = false,
+	},
+	optimize = {
+		name = "Optimize",
+		prompt_template = "Optimize this code for performance. Show the optimized version in a single code block, then briefly explain the improvements:\n\n{context}",
+		show_input = false,
+	},
+	tests = {
+		name = "Generate Tests",
+		prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Put all test code in a single code block:\n\n{context}",
+		show_input = false,
+	},
+	ask = {
+		name = "Ask",
+		prompt_template = nil, -- User provides the prompt
+		show_input = true,
+	},
 }
 
 --- Execute a predefined action on the visual selection.
 ---@param action_name string
 function M.run(action_name)
-  local action = M.actions[action_name]
-  if not action then
-    vim.notify("[solomon] Unknown action: " .. action_name, vim.log.levels.ERROR)
-    return
-  end
+	local action = M.actions[action_name]
+	if not action then
+		vim.notify("[solomon] Unknown action: " .. action_name, vim.log.levels.ERROR)
+		return
+	end
 
-  local utils = require("solomon.utils")
-  local selection = utils.get_visual_selection()
+	local utils = require("solomon.utils")
+	local selection = utils.get_visual_selection()
 
-  if not selection then
-    vim.notify("[solomon] No visual selection", vim.log.levels.WARN)
-    return
-  end
+	if not selection then
+		vim.notify("[solomon] No visual selection", vim.log.levels.WARN)
+		return
+	end
 
-  -- Capture source info for later apply
-  local source = {
-    bufnr = vim.api.nvim_get_current_buf(),
-    start_line = selection.start_line,
-    end_line = selection.end_line,
-    filetype = selection.filetype,
-    filename = selection.filename,
-  }
+	-- Capture source info for later apply
+	local source = {
+		bufnr = vim.api.nvim_get_current_buf(),
+		start_line = selection.start_line,
+		end_line = selection.end_line,
+		filetype = selection.filetype,
+		filename = selection.filename,
+	}
 
-  if action.show_input then
-    M._open_prompt(selection, action, source)
-  elseif action.inline then
-    M._execute_inline(selection, action, source)
-  else
-    M._execute(selection, action, nil, source)
-  end
+	if action.show_input then
+		M._open_prompt(selection, action, source)
+	elseif action.inline then
+		M._execute_inline(selection, action, source)
+	else
+		M._execute(selection, action, nil, source)
+	end
 end
 
 --- Open the prompt window for actions that need user input.
@@ -80,18 +80,18 @@ end
 ---@param action solomon.Action
 ---@param source table
 function M._open_prompt(selection, action, source)
-  local prompt = require("solomon.prompt")
+	local prompt = require("solomon.prompt")
 
-  prompt.open({
-    context_lines = selection.lines,
-    filetype = selection.filetype,
-    filename = selection.filename,
-    start_line = selection.start_line,
-    on_submit = function(user_prompt, context_str)
-      local full_prompt = user_prompt .. "\n\n" .. context_str
-      M._send_to_claude(full_prompt, source)
-    end,
-  })
+	prompt.open({
+		context_lines = selection.lines,
+		filetype = selection.filetype,
+		filename = selection.filename,
+		start_line = selection.start_line,
+		on_submit = function(user_prompt, context_str)
+			local full_prompt = user_prompt .. "\n\n" .. context_str
+			M._send_to_claude(full_prompt, source)
+		end,
+	})
 end
 
 --- Execute an action directly (no prompt window needed).
@@ -100,20 +100,16 @@ end
 ---@param extra_prompt string|nil
 ---@param source table
 function M._execute(selection, action, extra_prompt, source)
-  local utils = require("solomon.utils")
-  local context_str = utils.format_context(
-    selection.lines,
-    selection.filetype,
-    selection.filename,
-    selection.start_line
-  )
+	local utils = require("solomon.utils")
+	local context_str =
+		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
-  local full_prompt = action.prompt_template:gsub("{context}", context_str)
-  if extra_prompt then
-    full_prompt = full_prompt .. "\n\n" .. extra_prompt
-  end
+	local full_prompt = action.prompt_template:gsub("{context}", context_str)
+	if extra_prompt then
+		full_prompt = full_prompt .. "\n\n" .. extra_prompt
+	end
 
-  M._send_to_claude(full_prompt, source)
+	M._send_to_claude(full_prompt, source)
 end
 
 --- Execute an inline action — show loader in buffer, replace selection with result.
@@ -121,209 +117,213 @@ end
 ---@param action solomon.Action
 ---@param source table
 function M._execute_inline(selection, action, source)
-  local utils = require("solomon.utils")
-  local streaming = require("solomon.streaming")
+	local utils = require("solomon.utils")
+	local streaming = require("solomon.streaming")
 
-  local context_str = utils.format_context(
-    selection.lines,
-    selection.filetype,
-    selection.filename,
-    selection.start_line
-  )
+	local context_str =
+		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line)
 
-  local full_prompt = action.prompt_template:gsub("{context}", context_str)
-  local bufnr = source.bufnr
+	local full_prompt = action.prompt_template:gsub("{context}", context_str)
+	local bufnr = source.bufnr
 
-  -- Create namespace for virtual text
-  local ns = vim.api.nvim_create_namespace("solomon_inline")
+	-- Create namespace for virtual text
+	local ns = vim.api.nvim_create_namespace("solomon_inline")
 
-  -- Add "Thinking..." virtual lines before and after the selection
-  local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
-  local frame_idx = 1
+	-- Add "Thinking..." virtual lines before and after the selection
+	local spinner_frames = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+	local frame_idx = 1
 
-  local function set_loader_extmarks()
-    vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-    local spinner = spinner_frames[frame_idx]
-    -- Virtual line above selection
-    vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, {
-      virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
-      virt_lines_above = true,
-    })
-    -- Virtual line below selection
-    vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, {
-      virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
-    })
-  end
+	local function set_loader_extmarks()
+		vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+		local spinner = spinner_frames[frame_idx]
+		-- Virtual line above selection
+		vim.api.nvim_buf_set_extmark(bufnr, ns, source.start_line - 1, 0, {
+			virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
+			virt_lines_above = true,
+		})
+		-- Virtual line below selection
+		vim.api.nvim_buf_set_extmark(bufnr, ns, source.end_line - 1, 0, {
+			virt_lines = { { { spinner .. " Thinking...", "Comment" } } },
+		})
+	end
 
-  set_loader_extmarks()
+	set_loader_extmarks()
 
-  -- Animate the spinner
-  local timer = vim.uv.new_timer()
-  timer:start(80, 80, vim.schedule_wrap(function()
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-      timer:stop()
-      timer:close()
-      return
-    end
-    frame_idx = (frame_idx % #spinner_frames) + 1
-    pcall(set_loader_extmarks)
-  end))
+	-- Animate the spinner
+	local timer = vim.uv.new_timer()
+	timer:start(
+		80,
+		80,
+		vim.schedule_wrap(function()
+			if not vim.api.nvim_buf_is_valid(bufnr) then
+				timer:stop()
+				timer:close()
+				return
+			end
+			frame_idx = (frame_idx % #spinner_frames) + 1
+			pcall(set_loader_extmarks)
+		end)
+	)
 
-  -- Accumulate the full response
-  local accumulated = ""
+	-- Accumulate the full response
+	local accumulated = ""
 
-  local job = streaming.send({
-    prompt = full_prompt,
-    on_token = function(token)
-      accumulated = accumulated .. token
-    end,
-    on_done = function(result)
-      -- Stop spinner
-      timer:stop()
-      timer:close()
-      vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+	local job = streaming.send({
+		prompt = full_prompt,
+		on_token = function(token)
+			accumulated = accumulated .. token
+		end,
+		on_done = function(result)
+			-- Stop spinner
+			timer:stop()
+			timer:close()
+			vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 
-      require("solomon.statusline").record_request(result)
+			require("solomon.statusline").record_request(result)
 
-      -- Extract code from the response (find first code block)
-      local code = M._extract_code_block(accumulated)
-      if not code then
-        vim.notify("[solomon] No code block found in response — opening response window", vim.log.levels.WARN)
-        -- Fallback: show full response in response window
-        M._send_to_claude(full_prompt, source)
-        return
-      end
+			-- Extract code from the response (find first code block)
+			local code = M._extract_code_block(accumulated)
+			if not code then
+				vim.notify("[solomon] No code block found in response — opening response window", vim.log.levels.WARN)
+				-- Fallback: show full response in response window
+				M._send_to_claude(full_prompt, source)
+				return
+			end
 
-      local new_lines = vim.split(code, "\n", { plain = true })
+			local new_lines = vim.split(code, "\n", { plain = true })
 
-      -- Match indentation of the original selection
-      local original_indent = utils.detect_indent(selection.lines)
-      new_lines = utils.reindent(new_lines, original_indent)
+			-- Match indentation of the original selection
+			local original_indent = utils.detect_indent(selection.lines)
+			new_lines = utils.reindent(new_lines, original_indent)
 
-      -- Replace the selection in the source buffer
-      if vim.api.nvim_buf_is_valid(bufnr) then
-        vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
-        vim.notify(
-          string.format("[solomon] Refactored %d → %d lines", source.end_line - source.start_line + 1, #new_lines),
-          vim.log.levels.INFO
-        )
-      end
-    end,
-    on_error = function(err)
-      timer:stop()
-      timer:close()
-      vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
-      vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
-    end,
-  })
+			-- Replace the selection in the source buffer
+			if vim.api.nvim_buf_is_valid(bufnr) then
+				vim.api.nvim_buf_set_lines(bufnr, source.start_line - 1, source.end_line, false, new_lines)
+				vim.notify(
+					string.format(
+						"[solomon] Refactored %d → %d lines",
+						source.end_line - source.start_line + 1,
+						#new_lines
+					),
+					vim.log.levels.INFO
+				)
+			end
+		end,
+		on_error = function(err)
+			timer:stop()
+			timer:close()
+			vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
+			vim.notify("[solomon] " .. err, vim.log.levels.ERROR)
+		end,
+	})
 end
 
 --- Extract the first code block from a markdown response.
 ---@param text string
 ---@return string|nil
 function M._extract_code_block(text)
-  -- Match content between first ``` fence pair
-  local code = text:match("```%S*\n(.-)\n```")
-  if code then
-    return code
-  end
-  -- Try without language tag
-  code = text:match("```\n(.-)\n```")
-  return code
+	-- Match content between first ``` fence pair
+	local code = text:match("```%S*\n(.-)\n```")
+	if code then
+		return code
+	end
+	-- Try without language tag
+	code = text:match("```\n(.-)\n```")
+	return code
 end
 
 --- Send a prompt to Claude and display the streaming response.
 ---@param prompt string
 ---@param source table|nil Source buffer info for apply
 function M._send_to_claude(prompt, source)
-  local streaming = require("solomon.streaming")
-  local response = require("solomon.response")
+	local streaming = require("solomon.streaming")
+	local response = require("solomon.response")
 
-  local win = response.open(source)
-  response.set_status("Solomon (streaming...)")
+	local win = response.open(source)
+	response.set_status("Solomon (streaming...)")
 
-  -- Progress notification (noice.nvim will render this as a spinner)
-  local notif_id = "solomon_streaming"
-  vim.notify("Waiting for Claude...", vim.log.levels.INFO, {
-    title = "Solomon",
-    id = notif_id,
-    timeout = false,
-  })
+	-- Progress notification (noice.nvim will render this as a spinner)
+	local notif_id = "solomon_streaming"
+	vim.notify("Waiting for Claude...", vim.log.levels.INFO, {
+		title = "Solomon",
+		id = notif_id,
+		timeout = false,
+	})
 
-  local token_count = 0
+	local token_count = 0
 
-  local job = streaming.send({
-    prompt = prompt,
-    on_token = function(token)
-      response.append_token(token)
-      token_count = token_count + 1
-      -- Update progress every 10 tokens to avoid spamming
-      if token_count % 10 == 0 then
-        vim.notify("Streaming... (" .. token_count .. " chunks)", vim.log.levels.INFO, {
-          title = "Solomon",
-          id = notif_id,
-          timeout = false,
-        })
-      end
-    end,
-    on_done = function(result)
-      response.show_result_info(result)
-      require("solomon.statusline").record_request(result)
-      if win then
-        win.job = nil
-      end
+	local job = streaming.send({
+		prompt = prompt,
+		on_token = function(token)
+			response.append_token(token)
+			token_count = token_count + 1
+			-- Update progress every 10 tokens to avoid spamming
+			if token_count % 10 == 0 then
+				vim.notify("Streaming... (" .. token_count .. " chunks)", vim.log.levels.INFO, {
+					title = "Solomon",
+					id = notif_id,
+					timeout = false,
+				})
+			end
+		end,
+		on_done = function(result)
+			response.show_result_info(result)
+			require("solomon.statusline").record_request(result)
+			if win then
+				win.job = nil
+			end
 
-      -- Final notification
-      local parts = {}
-      if result.duration_ms then
-        table.insert(parts, string.format("%.1fs", result.duration_ms / 1000))
-      end
-      if result.cost_usd then
-        table.insert(parts, string.format("$%.4f", result.cost_usd))
-      end
-      vim.notify(
-        "Done" .. (#parts > 0 and " (" .. table.concat(parts, ", ") .. ")" or ""),
-        vim.log.levels.INFO,
-        { title = "Solomon", id = notif_id, timeout = 3000 }
-      )
-    end,
-    on_error = function(err)
-      response.set_status("Solomon (error)")
-      response.append_token("\n\n**Error:** " .. err)
-      vim.notify("Error: " .. err, vim.log.levels.ERROR, {
-        title = "Solomon",
-        id = notif_id,
-        timeout = 5000,
-      })
-    end,
-  })
+			-- Final notification
+			local parts = {}
+			if result.duration_ms then
+				table.insert(parts, string.format("%.1fs", result.duration_ms / 1000))
+			end
+			if result.cost_usd then
+				table.insert(parts, string.format("$%.4f", result.cost_usd))
+			end
+			vim.notify(
+				"Done" .. (#parts > 0 and " (" .. table.concat(parts, ", ") .. ")" or ""),
+				vim.log.levels.INFO,
+				{ title = "Solomon", id = notif_id, timeout = 3000 }
+			)
+		end,
+		on_error = function(err)
+			response.set_status("Solomon (error)")
+			response.append_token("\n\n**Error:** " .. err)
+			vim.notify("Error: " .. err, vim.log.levels.ERROR, {
+				title = "Solomon",
+				id = notif_id,
+				timeout = 5000,
+			})
+		end,
+	})
 
-  win.job = job
+	win.job = job
 end
 
 -- Public action shortcuts
 function M.ask()
-  M.run("ask")
+	M.run("ask")
 end
 
 function M.explain()
-  M.run("explain")
+	M.run("explain")
 end
 
 function M.refactor()
-  M.run("refactor")
+	M.run("refactor")
 end
 
 function M.fix()
-  M.run("fix")
+	M.run("fix")
 end
 
 function M.optimize()
-  M.run("optimize")
+	M.run("optimize")
 end
 
 function M.tests()
-  M.run("tests")
+	M.run("tests")
 end
 
 return M
