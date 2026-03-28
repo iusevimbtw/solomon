@@ -9,7 +9,8 @@ Claude Code integration for Neovim. A hybrid architecture combining terminal emb
 - **Inline Replace** — Animated spinner in buffer, auto-replaces selection with Claude's response
 - **Streaming Responses** — Real-time streaming display with markdown highlighting
 - **Code Apply** — Apply code blocks from responses directly into your source buffer
-- **MCP Server** — WebSocket server that lets Claude Code read your buffers, propose diffs, and access diagnostics
+- **MCP Server** — WebSocket server with permessage-deflate compression for full IDE integration
+- **Context Sending** — Send files/selections to Claude as @mentions via MCP
 - **Session Management** — Browse, resume, and continue Claude Code conversations with a picker
 - **Git Integration** — Diff review, commit message generation, blame explanation
 - **Statusline** — Lualine component showing MCP status, model, and cost
@@ -35,8 +36,8 @@ Optional: [snacks.nvim](https://github.com/folke/snacks.nvim), [lualine.nvim](ht
   },
   opts = {},
   keys = {
-    { "<leader>aa", desc = "Solomon: Toggle Claude Code" },
-    { "<leader>as", desc = "Solomon: Browse sessions" },
+    { "<leader>an", desc = "Solomon: Open Claude Code" },
+    { "<leader>aa", desc = "Solomon: Send to Claude" },
   },
 }
 ```
@@ -66,7 +67,9 @@ require("solomon").setup({
     auto_insert = true,
   },
   keymaps = {
-    toggle = "<leader>aa",
+    send = "<leader>aa",
+    toggle = "<leader>an",
+    focus = "<leader>af",
     ask = "<leader>ak",
     explain = "<leader>ae",
     improve = "<leader>ai",
@@ -91,7 +94,7 @@ require("solomon").setup({
 
 ## Keymaps
 
-All actions work in both normal mode (treesitter selects enclosing function) and visual mode.
+All code actions work in both normal mode (treesitter selects enclosing function) and visual mode.
 
 ### Code actions
 
@@ -102,15 +105,15 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 | `<leader>at` | Task (custom prompt, inline replace) | prompt → inline |
 | `<leader>ak` | Ask Claude (free-form question) | prompt → popup |
 
-### Terminal & sessions
+### Terminal & context
 
-| Key | Mode | Action |
-|-----|------|--------|
-| `<leader>aa` | normal | Toggle Claude Code terminal |
-| `<leader>aa` | visual | Toggle terminal + paste selection as context |
-| `<leader>as` | normal | Browse sessions |
-| `<leader>ac` | normal | Continue last session |
-| `<leader>ac` | visual | Continue last session + paste selection as context |
+| Key | Action |
+|-----|--------|
+| `<leader>an` | Open new Claude Code terminal |
+| `<leader>af` | Focus existing Claude Code terminal |
+| `<leader>aa` | Send selection/file/neo-tree file to Claude as @mention |
+| `<leader>ac` | Continue last session |
+| `<leader>as` | Browse sessions |
 
 ### Git
 
@@ -132,7 +135,11 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 ## Commands
 
 ```vim
-:Solomon                  " Toggle terminal
+:Solomon                  " Open new terminal
+:Solomon open             " Open new terminal
+:Solomon focus            " Focus existing terminal
+:Solomon close            " Close terminal
+:Solomon send             " Send context to Claude
 :Solomon diff             " Review unstaged changes
 :Solomon diff-staged      " Review staged changes
 :Solomon diff-hunk        " Review current hunk
@@ -145,6 +152,7 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 :Solomon mcp-start        " Start MCP server
 :Solomon mcp-stop         " Stop MCP server
 :Solomon mcp-status       " Show MCP status
+:Solomon mcp-log          " Open MCP debug log
 ```
 
 ## Statusline
@@ -159,13 +167,12 @@ lualine_x = {
 
 ## MCP Server
 
-Solomon runs a WebSocket MCP server that Claude Code discovers automatically via a lock file. Claude can:
+Solomon runs a WebSocket MCP server with permessage-deflate compression that Claude Code discovers automatically via a lock file. Claude can:
 
-- Read your open buffers
-- Access LSP diagnostics
-- Propose edits with diff review
-- Open files in the editor
-- Get cursor context
+- Read your open buffers and get diagnostics
+- Open files, propose diffs, save documents
+- Get current selection and workspace folders
+- Receive @mention context when you press `<leader>aa`
 
 The server starts automatically on plugin setup and cleans up on exit.
 

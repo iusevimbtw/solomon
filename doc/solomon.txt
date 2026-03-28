@@ -27,11 +27,12 @@ editor. It provides a hybrid architecture combining terminal embedding with
 an MCP bridge for bidirectional communication.
 
 Features:
-- Toggle Claude Code CLI in a side panel or floating window
+- Claude Code CLI in a side panel or floating window
 - Code actions (explain, improve, task, ask) in normal and visual mode
 - Inline replace with animated spinner for improve and task actions
 - Streaming response display with code block apply
-- MCP server for bidirectional editor integration
+- MCP server with permessage-deflate compression for full IDE integration
+- Send files/selections to Claude as @mentions
 - Session management with picker
 - Git integration (diff review, commit messages, blame)
 - Lualine statusline component
@@ -50,6 +51,7 @@ Optional:~
 - lualine.nvim — statusline component
 - which-key.nvim — keymap discovery
 - gitsigns.nvim — git hunk context
+- libz (system zlib) — WebSocket compression (auto-detected)
 
 ==============================================================================
 3. INSTALLATION                                         *solomon-installation*
@@ -63,8 +65,8 @@ With lazy.nvim:~
     },
     opts = {},
     keys = {
-      { "<leader>aa", desc = "Solomon: Toggle Claude Code" },
-      { "<leader>as", desc = "Solomon: Browse sessions" },
+      { "<leader>an", desc = "Solomon: Open Claude Code" },
+      { "<leader>aa", desc = "Solomon: Send to Claude" },
     },
   }
 <
@@ -83,19 +85,21 @@ Call `require("solomon").setup(opts)` with any of these options:
     terminal = {
       style = "split",          -- "float" or "split"
       float_opts = {
-        width = 0.8,            -- 0-1 for percentage
+        width = 0.8,
         height = 0.8,
         border = "rounded",
       },
       split_opts = {
-        position = "right",     -- "left", "right", "top", "bottom"
+        position = "right",
         size = 0.4,
       },
-      auto_close = true,        -- close terminal when CLI exits
-      auto_insert = true,       -- enter insert mode on open
+      auto_close = true,
+      auto_insert = true,
     },
     keymaps = {
-      toggle = "<leader>aa",
+      send = "<leader>aa",
+      toggle = "<leader>an",
+      focus = "<leader>af",
       ask = "<leader>ak",
       explain = "<leader>ae",
       improve = "<leader>ai",
@@ -107,13 +111,13 @@ Call `require("solomon").setup(opts)` with any of these options:
       blame = "<leader>ab",
     },
     cli = {
-      cmd = "claude",           -- path to claude binary
-      model = nil,              -- model override (e.g. "opus", "sonnet")
-      args = {},                -- extra CLI arguments
+      cmd = "claude",
+      model = nil,
+      args = {},
     },
     mcp = {
-      enabled = true,           -- enable MCP server
-      auto_start = true,        -- start on plugin setup
+      enabled = true,
+      auto_start = true,
     },
   })
 <
@@ -126,10 +130,13 @@ Set any keymap to `""` to disable it.
 :Solomon [subcommand]                                             *:Solomon*
 
 Terminal:~
-  `:Solomon`              Toggle Claude Code terminal
-  `:Solomon toggle`       Toggle Claude Code terminal
-  `:Solomon open`         Open Claude Code terminal
+  `:Solomon`              Open new Claude Code terminal
+  `:Solomon open`         Open new Claude Code terminal
+  `:Solomon focus`        Focus existing Claude Code terminal
   `:Solomon close`        Close Claude Code terminal
+
+Context:~
+  `:Solomon send`         Send selection/file to Claude as @mention
 
 Git:~
   `:Solomon diff`         Review unstaged git diff
@@ -148,6 +155,7 @@ MCP:~
   `:Solomon mcp-start`    Start the MCP server
   `:Solomon mcp-stop`     Stop the MCP server
   `:Solomon mcp-status`   Show MCP server status
+  `:Solomon mcp-log`      Open MCP debug log file
 
 ==============================================================================
 6. KEYMAPS                                                   *solomon-keymaps*
@@ -163,12 +171,12 @@ Code actions:~
   `<leader>at`   Task — custom prompt, inline replace
   `<leader>ak`   Ask Claude — free-form question (popup response)
 
-Terminal & sessions:~
-  `<leader>aa`   Toggle Claude Code terminal
-                 In visual mode: toggle + paste selection as context
-  `<leader>as`   Browse sessions
+Terminal & context:~
+  `<leader>an`   Open new Claude Code terminal
+  `<leader>af`   Focus existing Claude Code terminal
+  `<leader>aa`   Send selection/file/neo-tree file to Claude as @mention
   `<leader>ac`   Continue last session
-                 In visual mode: continue + paste selection as context
+  `<leader>as`   Browse sessions
 
 Git:~
   `<leader>ad`   Git diff review
@@ -216,26 +224,31 @@ Actions use `claude -p --output-format stream-json --verbose` for streaming.
 ==============================================================================
 8. MCP SERVER                                                   *solomon-mcp*
 
-Solomon runs a WebSocket MCP (Model Context Protocol) server that allows
-Claude Code to interact with your Neovim editor bidirectionally.
+Solomon runs a WebSocket MCP server with permessage-deflate compression
+that allows Claude Code to interact with your Neovim editor bidirectionally.
 
 The server:~
 - Starts automatically on plugin setup (configurable)
 - Listens on a random localhost port
 - Writes a lock file to `~/.claude/ide/<port>.lock`
 - Claude Code discovers it automatically
+- Uses RFC 7692 permessage-deflate compression via system zlib
 
 MCP Tools (Claude can call these):~
-  `nvim_get_open_buffers`   List all loaded buffers
-  `nvim_get_buffer`         Read buffer contents by path
-  `nvim_get_current_buffer` Get current buffer with cursor position
-  `nvim_open_file`          Open a file in the editor
-  `nvim_edit_with_diff`     Propose edits with diff review
-  `nvim_get_diagnostics`    Read LSP diagnostics
-  `nvim_get_cursor_context` Get code around cursor
+  `openFile`              Open a file in the editor
+  `getOpenEditors`        List all open buffers
+  `getCurrentSelection`   Get current visual selection
+  `getLatestSelection`    Get most recent selection
+  `getDiagnostics`        Read LSP diagnostics
+  `openDiff`              Open a diff view
+  `closeAllDiffTabs`      Close all diff views
+  `getWorkspaceFolders`   Get workspace folders
+  `checkDocumentDirty`    Check for unsaved changes
+  `saveDocument`          Save a document
 
-When Claude proposes an edit via `nvim_edit_with_diff`, a side-by-side diff
-view opens. Press `<CR>` to accept or `q` to reject.
+Context sending:~
+Press `<leader>aa` to send the current selection, file, or neo-tree file
+to Claude as an @mention via MCP broadcast.
 
 ==============================================================================
 9. SESSIONS                                                 *solomon-sessions*
@@ -300,9 +313,9 @@ Or use the component function directly:~
 Run `:checkhealth solomon` to verify:
 - Claude CLI is installed and accessible
 - Neovim version is compatible
-- Required plugins are available
-- Optional plugins are detected
+- Required and optional plugins
 - MCP server status
+- zlib availability for WebSocket compression
 
 ==============================================================================
 vim:tw=78:ts=8:ft=help:norl:
