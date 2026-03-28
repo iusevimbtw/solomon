@@ -23,17 +23,7 @@ local M = {}
 ---@param request solomon.StreamingRequest
 ---@return solomon.StreamingJob
 function M.send(request)
-  local config = require("solomon.config").options
-  local cmd = { config.cli.cmd, "-p", "--output-format", "stream-json", "--verbose" }
-
-  if config.cli.model then
-    table.insert(cmd, "--model")
-    table.insert(cmd, config.cli.model)
-  end
-
-  for _, arg in ipairs(config.cli.args) do
-    table.insert(cmd, arg)
-  end
+  local cmd = require("solomon.terminal").build_cmd({ "-p", "--output-format", "stream-json", "--verbose" })
 
   local accumulated_text = ""
   local result_data = {}

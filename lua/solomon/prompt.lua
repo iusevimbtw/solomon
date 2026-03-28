@@ -131,15 +131,6 @@ function M.open(opts)
   -- Start in insert mode
   vim.cmd("startinsert!")
 
-  -- Build the context string for submission
-  local utils = require("solomon.utils")
-  local context_str = utils.format_context(
-    opts.context_lines,
-    opts.filetype or "",
-    opts.filename or "unknown",
-    opts.start_line
-  )
-
   -- Submit keymap (Enter in normal mode, Ctrl-Enter in insert mode)
   local function submit()
     local input_lines = vim.api.nvim_buf_get_lines(input_popup.bufnr, 0, -1, false)
@@ -151,7 +142,7 @@ function M.open(opts)
     end
 
     layout:unmount()
-    opts.on_submit(prompt, context_str)
+    opts.on_submit(prompt)
   end
 
   local function close()

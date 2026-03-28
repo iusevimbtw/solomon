@@ -182,31 +182,26 @@ function M._handle_message(client, raw)
 
   M._log("RECV", raw)
 
-  -- Route the message
-  if method == "initialize" then
-    M._handle_initialize(client, id, params)
-  elseif method == "notifications/initialized" then
-    M._handle_initialized(client)
-  elseif method == "notifications/cancelled" then
-    M._handle_cancelled(params)
-  elseif method == "ping" then
-    M._send_result(client, id, {})
-  elseif method == "tools/list" then
-    M._handle_tools_list(client, id)
-  elseif method == "tools/call" then
-    M._handle_tools_call(client, id, params)
-  elseif method == "prompts/list" then
-    -- Return empty prompts list (we advertise the capability but have none)
-    M._send_result(client, id, { prompts = {} })
-  elseif method == "resources/list" then
-    M._handle_resources_list(client, id)
-  elseif method == "resources/read" then
-    M._handle_resources_read(client, id, params)
-  elseif method == "ide_connected" then
-    -- Claude notifies us it's connected — no response needed
-    M._log("INFO", "Claude IDE connected, pid=" .. tostring(params.pid))
+  -- Dispatch table for MCP methods
+  local dispatch = {
+    initialize = function() M._handle_initialize(client, id, params) end,
+    ["notifications/initialized"] = function() M._handle_initialized(client) end,
+    ["notifications/cancelled"] = function() M._handle_cancelled(params) end,
+    ping = function() M._send_result(client, id, {}) end,
+    ["tools/list"] = function() M._handle_tools_list(client, id) end,
+    ["tools/call"] = function() M._handle_tools_call(client, id, params) end,
+    ["prompts/list"] = function() M._send_result(client, id, { prompts = {} }) end,
+    ["resources/list"] = function() M._handle_resources_list(client, id) end,
+    ["resources/read"] = function() M._handle_resources_read(client, id, params) end,
+    ide_connected = function()
+      M._log("INFO", "Claude IDE connected, pid=" .. tostring(params.pid))
+    end,
+  }
+
+  local handler = dispatch[method]
+  if handler then
+    handler()
   else
-    -- Unknown method — only error for requests (have id), silently ignore notifications
     if id then
       M._send_error(client, id, -32601, "Method not found: " .. tostring(method))
     end
@@ -548,10 +543,7 @@ end
 --- Stop the heartbeat timer.
 function M._stop_heartbeat()
   if M._heartbeat_timer then
-    M._heartbeat_timer:stop()
-    if not M._heartbeat_timer:is_closing() then
-      M._heartbeat_timer:close()
-    end
+    require("solomon.utils").stop_timer(M._heartbeat_timer)
     M._heartbeat_timer = nil
   end
 end

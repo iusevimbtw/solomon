@@ -328,4 +328,16 @@ function M.get_neotree_file()
   return nil
 end
 
+--- Safely stop and close a vim.uv timer.
+---@param timer userdata|nil
+function M.stop_timer(timer)
+  if not timer then
+    return
+  end
+  timer:stop()
+  if not timer:is_closing() then
+    timer:close()
+  end
+end
+
 return M

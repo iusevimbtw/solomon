@@ -113,8 +113,7 @@ function M.open(source)
   win._spinner_timer = timer
   timer:start(80, 80, vim.schedule_wrap(function()
     if not win._thinking then
-      timer:stop()
-      if not timer:is_closing() then timer:close() end
+      require("solomon.utils").stop_timer(timer)
       return
     end
     frame_idx = (frame_idx % #spinner_frames) + 1
@@ -157,11 +156,8 @@ function M.append_token(token)
   -- Stop the thinking spinner on first token
   if win._thinking then
     win._thinking = false
-    if win._spinner_timer then
-      win._spinner_timer:stop()
-      if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
-      win._spinner_timer = nil
-    end
+    require("solomon.utils").stop_timer(win._spinner_timer)
+    win._spinner_timer = nil
   end
 
   local token_lines = vim.split(token, "\n", { plain = true })
@@ -227,11 +223,8 @@ function M.cancel()
     return
   end
   win._thinking = false
-  if win._spinner_timer then
-    win._spinner_timer:stop()
-    if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
-    win._spinner_timer = nil
-  end
+  require("solomon.utils").stop_timer(win._spinner_timer)
+  win._spinner_timer = nil
   if win.job then
     win.job.cancel()
     win.job = nil
@@ -249,8 +242,7 @@ function M.close()
     end
     win._thinking = false
     if win._spinner_timer then
-      win._spinner_timer:stop()
-      if not win._spinner_timer:is_closing() then win._spinner_timer:close() end
+      require("solomon.utils").stop_timer(win._spinner_timer)
       win._spinner_timer = nil
     end
     pcall(vim.api.nvim_del_augroup_by_id,
@@ -262,16 +254,16 @@ function M.close()
   end
 end
 
---- Find the code block boundaries around the cursor.
+--- Find a code block in the response.
+--- If cursor_line is given, finds the block containing that line.
+--- If cursor_line is nil, returns the first block found.
+---@param cursor_line integer|nil 1-indexed cursor line, or nil for first block
 ---@return {start_line: integer, end_line: integer, lang: string|nil, lines: string[]}|nil
-function M._find_code_block_at_cursor()
+function M._find_code_block(cursor_line)
   local win = M.current
   if not win then
     return nil
   end
-
-  local cursor = vim.api.nvim_win_get_cursor(win.popup.winid)
-  local cursor_line = cursor[1]
 
   local in_block = false
   local current_start, current_lang
@@ -284,8 +276,9 @@ function M._find_code_block_at_cursor()
       current_lang = trimmed:match("^```(%S+)")
     elseif trimmed:match("^```") and in_block then
       in_block = false
-      -- Cursor on the fence lines counts too
-      if cursor_line >= current_start - 1 and cursor_line <= i then
+      -- If no cursor constraint, return the first block found
+      -- If cursor given, check if cursor is within this block (including fence lines)
+      if not cursor_line or (cursor_line >= current_start - 1 and cursor_line <= i) then
         local code_lines = {}
         for j = current_start, i - 1 do
           table.insert(code_lines, win.lines[j])
@@ -303,38 +296,21 @@ function M._find_code_block_at_cursor()
   return nil
 end
 
---- Find the first code block in the response (cursor-independent).
----@return {start_line: integer, end_line: integer, lang: string|nil, lines: string[]}|nil
-function M._find_first_code_block()
+--- Try cursor-based block first, then fall back to first block.
+---@return table|nil
+function M._get_best_code_block()
   local win = M.current
-  if not win then
-    return nil
+  if not win or not win.popup or not win.popup.winid then
+    return M._find_code_block(nil)
   end
-
-  local in_block = false
-  local current_start, current_lang
-
-  for i, line in ipairs(win.lines) do
-    local trimmed = line:match("^%s*(.*)")
-    if trimmed:match("^```") and not in_block then
-      in_block = true
-      current_start = i + 1
-      current_lang = trimmed:match("^```(%S+)")
-    elseif trimmed:match("^```") and in_block then
-      local code_lines = {}
-      for j = current_start, i - 1 do
-        table.insert(code_lines, win.lines[j])
-      end
-      return {
-        start_line = current_start,
-        end_line = i - 1,
-        lang = current_lang,
-        lines = code_lines,
-      }
+  local ok, cursor = pcall(vim.api.nvim_win_get_cursor, win.popup.winid)
+  if ok then
+    local block = M._find_code_block(cursor[1])
+    if block then
+      return block
     end
   end
-
-  return nil
+  return M._find_code_block(nil)
 end
 
 --- Apply the code block — tries cursor position first, then first block in response.
@@ -344,7 +320,7 @@ function M.apply_code_block()
     return
   end
 
-  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
+  local block = M._get_best_code_block()
   if not block then
     vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return
@@ -391,7 +367,7 @@ end
 
 --- Yank the code block to clipboard — tries cursor position first, then first block.
 function M.yank_code_block()
-  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
+  local block = M._get_best_code_block()
   if not block then
     vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return
@@ -411,7 +387,7 @@ function M.diff_code_block()
     return
   end
 
-  local block = M._find_code_block_at_cursor() or M._find_first_code_block()
+  local block = M._get_best_code_block()
   if not block then
     vim.notify("[solomon] No code block found in response", vim.log.levels.WARN)
     return

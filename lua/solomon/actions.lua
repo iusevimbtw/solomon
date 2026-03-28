@@ -82,38 +82,53 @@ function M._open_prompt(selection, action, source)
 		filetype = selection.filetype,
 		filename = selection.filename,
 		start_line = selection.start_line,
-		on_submit = function(user_prompt, context_str)
+		on_submit = function(user_prompt)
 			if action.inline and action.prompt_template then
-				-- Inline prompt: build full prompt, then execute inline with spinner
-				local utils = require("solomon.utils")
-				local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
-				local context_str_full =
-					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
-				local project_context = M._build_project_context()
-				local diagnostics = M._build_diagnostics_context(source)
-				local full_prompt = action.prompt_template
-					:gsub("{user_prompt}", user_prompt)
-					:gsub("{diagnostics}", diagnostics)
-					:gsub("{project_context}", project_context)
-					:gsub("{context}", context_str_full)
+				local full_prompt = M._build_full_prompt(action, selection, source, user_prompt)
 				M._execute_inline(selection, action, source, full_prompt)
 			else
-				local utils = require("solomon.utils")
-				local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
-				local context_str_full =
-					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
+				local context_str = M._build_context_str(selection, source)
 				local project_context = M._build_project_context()
 				local diagnostics = M._build_diagnostics_context(source)
 				local full_prompt = "You are a code assistant responding in a Neovim editor. "
 					.. "Answer the question below about the provided code. "
 					.. "If the question is asking for a change, provide the updated code in a single code block.\n\n"
-					.. diagnostics
-					.. project_context
-					.. "Question: " .. user_prompt .. "\n\n" .. context_str_full
+					.. diagnostics .. project_context
+					.. "Question: " .. user_prompt .. "\n\n" .. context_str
 				M._send_to_claude(full_prompt, source)
 			end
 		end,
 	})
+end
+
+--- Build the formatted context string with surrounding code.
+---@param selection table
+---@param source table
+---@return string
+function M._build_context_str(selection, source)
+	local utils = require("solomon.utils")
+	local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
+	return utils.format_context(
+		selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding
+	)
+end
+
+--- Build a complete prompt from an action template + context + project + diagnostics.
+---@param action solomon.Action
+---@param selection table
+---@param source table
+---@param user_prompt string|nil Extra user text (for {user_prompt} placeholder)
+---@return string
+function M._build_full_prompt(action, selection, source, user_prompt)
+	local context_str = M._build_context_str(selection, source)
+	local project_context = M._build_project_context()
+	local diagnostics = M._build_diagnostics_context(source)
+	local prompt = action.prompt_template
+		:gsub("{user_prompt}", user_prompt or "")
+		:gsub("{diagnostics}", diagnostics)
+		:gsub("{project_context}", project_context)
+		:gsub("{context}", context_str)
+	return prompt
 end
 
 --- Execute an action directly (no prompt window needed).
@@ -122,21 +137,10 @@ end
 ---@param extra_prompt string|nil
 ---@param source table
 function M._execute(selection, action, extra_prompt, source)
-	local utils = require("solomon.utils")
-	local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
-	local context_str =
-		utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
-
-	local project_context = M._build_project_context()
-	local diagnostics = M._build_diagnostics_context(source)
-	local full_prompt = action.prompt_template
-		:gsub("{diagnostics}", diagnostics)
-		:gsub("{project_context}", project_context)
-		:gsub("{context}", context_str)
+	local full_prompt = M._build_full_prompt(action, selection, source)
 	if extra_prompt then
 		full_prompt = full_prompt .. "\n\n" .. extra_prompt
 	end
-
 	M._send_to_claude(full_prompt, source)
 end
 
@@ -149,20 +153,7 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	local utils = require("solomon.utils")
 	local streaming = require("solomon.streaming")
 
-	local full_prompt
-	if pre_built_prompt then
-		full_prompt = pre_built_prompt
-	else
-		local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
-		local context_str =
-			utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
-		local project_context = M._build_project_context()
-		local diagnostics = M._build_diagnostics_context(source)
-		full_prompt = action.prompt_template
-			:gsub("{diagnostics}", diagnostics)
-			:gsub("{project_context}", project_context)
-			:gsub("{context}", context_str)
-	end
+	local full_prompt = pre_built_prompt or M._build_full_prompt(action, selection, source)
 	local bufnr = source.bufnr
 
 	-- Create unique namespaces per invocation so concurrent actions don't interfere
@@ -217,8 +208,7 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 		80,
 		vim.schedule_wrap(function()
 			if not vim.api.nvim_buf_is_valid(bufnr) then
-				timer:stop()
-				timer:close()
+				utils.stop_timer(timer)
 				return
 			end
 			frame_idx = (frame_idx % #spinner_frames) + 1
@@ -227,10 +217,7 @@ function M._execute_inline(selection, action, source, pre_built_prompt)
 	)
 
 	local function stop_spinner()
-		timer:stop()
-		if not timer:is_closing() then
-			timer:close()
-		end
+		utils.stop_timer(timer)
 		vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 	end
 

@@ -6,7 +6,7 @@ describe("solomon.response", function()
     response = require("solomon.response")
   end)
 
-  describe("_find_code_block_at_cursor", function()
+  describe("_find_code_block", function()
     -- We test the block-finding logic by setting up win.lines manually
     -- and mocking the cursor position
 
@@ -22,15 +22,8 @@ describe("solomon.response", function()
       }
       response.current = mock_win
 
-      -- Mock the cursor position
-      local orig_get_cursor = vim.api.nvim_win_get_cursor
-      vim.api.nvim_win_get_cursor = function()
-        return { cursor_line, 0 }
-      end
+      local result = response._find_code_block(cursor_line)
 
-      local result = response._find_code_block_at_cursor()
-
-      vim.api.nvim_win_get_cursor = orig_get_cursor
       response.current = nil
 
       return result
@@ -145,7 +138,7 @@ describe("solomon.response", function()
 
     it("returns nil when no current window", function()
       response.current = nil
-      local result = response._find_code_block_at_cursor()
+      local result = response._find_code_block()
       assert.is_nil(result)
     end)
   end)
