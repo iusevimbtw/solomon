@@ -84,7 +84,7 @@ function M.register_commands()
 		elseif subcmd == "blame" then
 			require("solomon.git").blame()
 		elseif subcmd == "sessions" then
-			require("solomon.sessions").pick()
+			require("solomon.sessions").pick({ project_only = true })
 		elseif subcmd == "sessions-project" then
 			require("solomon.sessions").pick({ project_only = true })
 		elseif subcmd == "continue" then
@@ -94,7 +94,7 @@ function M.register_commands()
 			if session_id then
 				require("solomon.sessions").resume(session_id)
 			else
-				require("solomon.sessions").pick()
+				require("solomon.sessions").pick({ project_only = true })
 			end
 		else
 			vim.notify("Solomon: unknown command '" .. subcmd .. "'", vim.log.levels.ERROR)
@@ -166,7 +166,7 @@ function M.register_keymaps()
 	end, "Task (prompt + inline)")
 
 	map("n", km.sessions, function()
-		require("solomon.sessions").pick()
+		require("solomon.sessions").pick({ project_only = true })
 	end, "Browse sessions")
 
 	map("n", km.continue_session, function()
