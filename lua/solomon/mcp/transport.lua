@@ -70,7 +70,7 @@ function M.create(opts)
   tcp:listen(128, function(listen_err)
     if listen_err then
       vim.schedule(function()
-        vim.notify("[solomon] MCP listen error: " .. listen_err, vim.log.levels.ERROR)
+        pcall(function() require("solomon.mcp.server")._log("ERROR", "Listen error: " .. listen_err) end)
       end)
       return
     end
@@ -89,12 +89,13 @@ function M.create(opts)
 
     client_socket:read_start(function(read_err, chunk)
       if read_err then
+        pcall(function() require("solomon.mcp.server")._log("ERROR", "Read error: " .. tostring(read_err)) end)
         M._remove_client(server, client)
         return
       end
 
       if not chunk then
-        -- Connection closed
+        pcall(function() require("solomon.mcp.server")._log("INFO", "Connection closed by peer (null chunk)") end)
         M._remove_client(server, client)
         return
       end
@@ -156,6 +157,21 @@ function M.send_close(client)
   end)
 end
 
+--- Case-insensitive header extraction from an HTTP request.
+---@param request string
+---@param header_name string
+---@return string|nil
+local function get_header(request, header_name)
+  local pattern = header_name:gsub("%-", "%%-")
+  for line in request:gmatch("([^\r\n]+)") do
+    local name, value = line:match("^([^:]+):%s*(.*)")
+    if name and name:lower() == header_name:lower() then
+      return vim.trim(value)
+    end
+  end
+  return nil
+end
+
 --- Handle the HTTP upgrade request for WebSocket.
 ---@param server solomon.WSServer
 ---@param client solomon.WSClient
@@ -168,21 +184,29 @@ function M._handle_upgrade(server, client, data)
     return
   end
 
-  local request = client.buffer
+  -- Split at the end of HTTP headers — keep any trailing WebSocket data
+  local header_end = client.buffer:find("\r\n\r\n")
+  local request = client.buffer:sub(1, header_end + 3)
+  local trailing = client.buffer:sub(header_end + 4)
   client.buffer = ""
 
-  -- Extract Sec-WebSocket-Key
-  local ws_key = request:match("Sec%-WebSocket%-Key:%s*([^\r\n]+)")
+  pcall(function()
+    require("solomon.mcp.server")._log("INFO", "WebSocket upgrade request:\n" .. request:sub(1, 500))
+  end)
+  -- Extract Sec-WebSocket-Key (case-insensitive)
+  local ws_key = get_header(request, "Sec-WebSocket-Key")
   if not ws_key then
+    pcall(function() require("solomon.mcp.server")._log("ERROR", "Missing Sec-WebSocket-Key") end)
     client.socket:write("HTTP/1.1 400 Bad Request\r\n\r\n")
     M._remove_client(server, client)
     return
   end
 
-  -- Validate auth token from URL query parameter or header
-  local auth = request:match("[?&]token=([^%s&]+)")
-    or request:match("Authorization:%s*Bearer%s+([^\r\n]+)")
+  -- Validate auth token — Claude Code sends x-claude-code-ide-authorization header
+  local auth = get_header(request, "x-claude-code-ide-authorization")
+    or request:match("[?&]token=([^%s&]+)")
   if auth ~= server.auth_token then
+    pcall(function() require("solomon.mcp.server")._log("ERROR", "Auth mismatch: got=" .. tostring(auth) .. " expected=" .. tostring(server.auth_token)) end)
     client.socket:write("HTTP/1.1 401 Unauthorized\r\n\r\n")
     M._remove_client(server, client)
     return
@@ -191,15 +215,28 @@ function M._handle_upgrade(server, client, data)
   -- Compute accept header
   local accept = vim.base64.encode(sha1.binary(ws_key .. WS_GUID))
 
+  -- Check if client requested a WebSocket subprotocol
+  local ws_protocol = get_header(request, "Sec-WebSocket-Protocol")
+
   -- Send upgrade response
-  local response = table.concat({
+  local response_lines = {
     "HTTP/1.1 101 Switching Protocols",
     "Upgrade: websocket",
     "Connection: Upgrade",
     "Sec-WebSocket-Accept: " .. accept,
-    "",
-    "",
-  }, "\r\n")
+  }
+  -- Echo back the subprotocol if requested
+  if ws_protocol then
+    -- Take the first protocol if multiple are offered
+    local first_protocol = ws_protocol:match("^([^,]+)")
+    if first_protocol then
+      table.insert(response_lines, "Sec-WebSocket-Protocol: " .. vim.trim(first_protocol))
+    end
+  end
+  table.insert(response_lines, "")
+  table.insert(response_lines, "")
+
+  local response = table.concat(response_lines, "\r\n")
 
   client.socket:write(response)
   client.upgraded = true
@@ -207,6 +244,11 @@ function M._handle_upgrade(server, client, data)
   vim.schedule(function()
     server.on_connect(client)
   end)
+
+  -- Process any WebSocket data that arrived in the same TCP packet as the HTTP upgrade
+  if #trailing > 0 then
+    M._handle_ws_data(server, client, trailing)
+  end
 end
 
 --- Handle incoming WebSocket frame data.
@@ -230,12 +272,23 @@ function M._handle_ws_data(server, client, data)
         server.on_message(client, payload)
       end)
     elseif frame.opcode == OP_PING then
-      -- Respond with pong
       local pong = M._encode_frame(OP_PONG, payload)
       pcall(function()
         client.socket:write(pong)
       end)
+      pcall(function() require("solomon.mcp.server")._log("INFO", "Received PING, sent PONG") end)
     elseif frame.opcode == OP_CLOSE then
+      -- Log close frame payload (contains status code + reason)
+      local close_code = nil
+      local close_reason = ""
+      if #payload >= 2 then
+        close_code = lshift(payload:byte(1), 8) + payload:byte(2)
+        close_reason = payload:sub(3)
+      end
+      pcall(function()
+        require("solomon.mcp.server")._log("INFO",
+          "Received CLOSE frame: code=" .. tostring(close_code) .. " reason=" .. close_reason)
+      end)
       M._remove_client(server, client)
       return
     end

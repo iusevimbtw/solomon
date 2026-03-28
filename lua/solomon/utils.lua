@@ -302,4 +302,30 @@ function M.get_diagnostics_for_range(bufnr, start_line, end_line)
   return "LSP Diagnostics:\n" .. table.concat(relevant, "\n")
 end
 
+--- Get the file path under cursor in a neo-tree buffer.
+---@return string|nil filepath
+function M.get_neotree_file()
+  if vim.bo.filetype ~= "neo-tree" then
+    return nil
+  end
+  local ok, manager = pcall(require, "neo-tree.sources.manager")
+  if not ok then
+    return nil
+  end
+  local state_ok, state = pcall(manager.get_state, "filesystem")
+  if not state_ok or not state or not state.tree then
+    return nil
+  end
+  local node = state.tree:get_node()
+  if not node then
+    return nil
+  end
+  local path = node:get_id()
+  -- Only return if it's a file (not a directory)
+  if path and vim.fn.filereadable(path) == 1 then
+    return path
+  end
+  return nil
+end
+
 return M

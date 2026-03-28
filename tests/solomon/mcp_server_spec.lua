@@ -109,15 +109,15 @@ describe("solomon.mcp.server", function()
       assert.equals("2025-03-26", sent_messages[1].result.protocolVersion)
     end)
 
-    it("rejects unsupported protocol version", function()
+    it("accepts any protocol version by echoing it back", function()
       server._handle_initialize(mock_client, 1, {
         protocolVersion = "9999-01-01",
         capabilities = {},
       })
 
       assert.equals(1, #sent_messages)
-      assert.is_not_nil(sent_messages[1].error)
-      assert.truthy(sent_messages[1].error.message:find("Unsupported"))
+      assert.is_not_nil(sent_messages[1].result)
+      assert.equals("9999-01-01", sent_messages[1].result.protocolVersion)
     end)
 
     it("stores client capabilities after initialize", function()

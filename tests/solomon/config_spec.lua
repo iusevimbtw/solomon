@@ -14,7 +14,7 @@ describe("solomon.config", function()
 
     it("has keymap config", function()
       assert.is_not_nil(config.defaults.keymaps)
-      assert.equals("<leader>aa", config.defaults.keymaps.toggle)
+      assert.equals("<leader>an", config.defaults.keymaps.toggle)
     end)
 
     it("has cli config", function()
@@ -45,7 +45,7 @@ describe("solomon.config", function()
       assert.equals("opus", config.options.cli.model)
       -- Unset fields keep defaults
       assert.equals("claude", config.options.cli.cmd)
-      assert.equals("<leader>aa", config.options.keymaps.toggle)
+      assert.equals("<leader>an", config.options.keymaps.toggle)
     end)
 
     it("deep merges nested tables", function()

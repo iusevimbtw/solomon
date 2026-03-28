@@ -86,35 +86,41 @@ function M.format_selection_context(selection)
     selection.filepath, selection.start_line, selection.filetype, code)
 end
 
---- Send the visual selection to Claude via MCP at_mentioned broadcast.
----@return boolean sent Whether the mention was sent or queued
-local function send_selection_via_mcp()
+--- Smart send: send context to Claude via MCP @mention.
+--- Visual mode: sends selection. Normal mode: sends whole file. Neo-tree: sends file under cursor.
+function M.send()
   local utils = require("solomon.utils")
-  local selection = utils.get_visual_selection()
-  if not selection then
-    return false
-  end
   local server = require("solomon.mcp.server")
-  server.send_at_mention(selection.filepath, selection.start_line, selection.end_line)
-  return true
-end
 
---- Toggle the Claude Code terminal, optionally sending visual selection as context via MCP.
----@param with_context boolean|nil
-function M.toggle_with_context(with_context)
-  local ok, snacks = pcall(require, "snacks")
-  if not ok then
-    vim.notify("[solomon] snacks.nvim is required for terminal support", vim.log.levels.ERROR)
+  -- Check for neo-tree first
+  local neotree_file = utils.get_neotree_file()
+  if neotree_file then
+    local total_lines = #vim.fn.readfile(neotree_file)
+    server.send_at_mention(neotree_file, 1, total_lines)
+    vim.notify("[solomon] Sent " .. vim.fn.fnamemodify(neotree_file, ":t") .. " to Claude", vim.log.levels.INFO)
     return
   end
 
-  -- Capture selection before toggling (visual mode will be exited)
-  if with_context then
-    send_selection_via_mcp()
+  -- Try visual selection
+  local selection = utils.get_visual_selection()
+  if selection then
+    server.send_at_mention(selection.filepath, selection.start_line, selection.end_line)
+    vim.notify(
+      string.format("[solomon] Sent %s:%d-%d to Claude", selection.filename, selection.start_line, selection.end_line),
+      vim.log.levels.INFO
+    )
+    return
   end
 
-  -- Toggle the terminal
-  snacks.terminal.toggle(M.build_cmd(), M.build_opts())
+  -- Normal mode: send entire current file
+  local filepath = vim.fn.expand("%:p")
+  if filepath == "" then
+    vim.notify("[solomon] No file to send", vim.log.levels.WARN)
+    return
+  end
+  local total_lines = vim.api.nvim_buf_line_count(0)
+  server.send_at_mention(filepath, 1, total_lines)
+  vim.notify("[solomon] Sent " .. vim.fn.expand("%:t") .. " to Claude", vim.log.levels.INFO)
 end
 
 --- Close the Claude Code terminal if open.

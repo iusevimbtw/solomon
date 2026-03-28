@@ -5,6 +5,40 @@ local transport = require("solomon.mcp.transport")
 
 local M = {}
 
+-- ─── Logging ───
+
+M._log_path = nil
+M._log_enabled = false
+
+--- Enable MCP debug logging to a file.
+function M.enable_logging()
+  local log_dir = vim.fn.stdpath("log")
+  vim.fn.mkdir(log_dir, "p")
+  M._log_path = log_dir .. "/solomon-mcp.log"
+  M._log_enabled = true
+  -- Clear previous log
+  local f = io.open(M._log_path, "w")
+  if f then
+    f:write("=== Solomon MCP log started " .. os.date("%Y-%m-%d %H:%M:%S") .. " ===\n")
+    f:close()
+  end
+  vim.notify("[solomon] MCP logging to " .. M._log_path, vim.log.levels.INFO)
+end
+
+--- Write a line to the MCP log.
+---@param direction string "RECV", "SEND", "INFO", "ERROR"
+---@param msg string
+function M._log(direction, msg)
+  if not M._log_enabled or not M._log_path then
+    return
+  end
+  local f = io.open(M._log_path, "a")
+  if f then
+    f:write(string.format("[%s] %s: %s\n", os.date("%H:%M:%S"), direction, msg))
+    f:close()
+  end
+end
+
 ---@class solomon.MCPServer
 ---@field ws solomon.WSServer|nil WebSocket server
 ---@field lock_path string|nil
@@ -21,7 +55,11 @@ local M = {}
 M.instance = nil
 
 local PROTOCOL_VERSION = "2024-11-05"
-local SUPPORTED_VERSIONS = { ["2024-11-05"] = true, ["2025-03-26"] = true }
+local SUPPORTED_VERSIONS = {
+  ["2024-11-05"] = true,
+  ["2025-03-26"] = true,
+  ["2025-06-18"] = true,
+}
 local SERVER_NAME = "solomon-nvim"
 local SERVER_VERSION = "0.1.0"
 
@@ -29,7 +67,7 @@ local SERVER_VERSION = "0.1.0"
 ---@return boolean success
 function M.start()
   if M.instance and M.instance.ws then
-    vim.notify("[solomon] MCP server already running on port " .. M.instance.ws.port, vim.log.levels.WARN)
+    M._log("INFO", "MCP server already running on port " .. M.instance.ws.port)
     return true
   end
 
@@ -49,19 +87,19 @@ function M.start()
           capabilities = nil,
         }
       end
-      vim.notify("[solomon] MCP client connected: " .. client.id, vim.log.levels.INFO)
+      M._log("INFO", "Client connected: " .. client.id)
     end,
     on_disconnect = function(client)
       -- Clean up per-client state
       if M.instance then
         M.instance.clients[client.id] = nil
       end
-      vim.notify("[solomon] MCP client disconnected: " .. client.id, vim.log.levels.INFO)
+      M._log("INFO", "Client disconnected: " .. client.id)
     end,
   })
 
   if not ws then
-    vim.notify("[solomon] Failed to start MCP server: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    M._log("ERROR", "Failed to start MCP server: " .. (err or "unknown error"))
     return false
   end
 
@@ -79,10 +117,7 @@ function M.start()
   -- Start heartbeat timer to detect dead connections
   M._start_heartbeat()
 
-  vim.notify(
-    string.format("[solomon] MCP server started on port %d", ws.port),
-    vim.log.levels.INFO
-  )
+  M._log("INFO", string.format("MCP server started on port %d", ws.port))
 
   return true
 end
@@ -113,7 +148,7 @@ function M.stop()
 
   M._remove_lock_file()
   M.instance = nil
-  vim.notify("[solomon] MCP server stopped", vim.log.levels.INFO)
+  M._log("INFO", "MCP server stopped")
 end
 
 --- Check if the MCP server is running.
@@ -145,6 +180,8 @@ function M._handle_message(client, raw)
   local id = msg.id
   local params = msg.params or {}
 
+  M._log("RECV", raw)
+
   -- Route the message
   if method == "initialize" then
     M._handle_initialize(client, id, params)
@@ -158,15 +195,22 @@ function M._handle_message(client, raw)
     M._handle_tools_list(client, id)
   elseif method == "tools/call" then
     M._handle_tools_call(client, id, params)
+  elseif method == "prompts/list" then
+    -- Return empty prompts list (we advertise the capability but have none)
+    M._send_result(client, id, { prompts = {} })
   elseif method == "resources/list" then
     M._handle_resources_list(client, id)
   elseif method == "resources/read" then
     M._handle_resources_read(client, id, params)
+  elseif method == "ide_connected" then
+    -- Claude notifies us it's connected — no response needed
+    M._log("INFO", "Claude IDE connected, pid=" .. tostring(params.pid))
   else
-    -- Unknown method
+    -- Unknown method — only error for requests (have id), silently ignore notifications
     if id then
       M._send_error(client, id, -32601, "Method not found: " .. tostring(method))
     end
+    M._log("INFO", "Unhandled method: " .. tostring(method))
   end
 end
 
@@ -177,32 +221,27 @@ end
 function M._handle_initialize(client, id, params)
   local requested_version = params.protocolVersion or PROTOCOL_VERSION
 
-  -- Validate protocol version
-  if not SUPPORTED_VERSIONS[requested_version] then
-    M._send_error(client, id, -32602, "Unsupported protocol version: " .. tostring(requested_version))
-    return
-  end
-
   -- Store client capabilities
   if M.instance and M.instance.clients[client.id] then
     M.instance.clients[client.id].protocol_version = requested_version
     M.instance.clients[client.id].capabilities = params.capabilities
   end
 
-  -- Build server capabilities based on what the client supports
+  -- Accept whatever version the client wants — echo it back
   local server_caps = {
+    logging = vim.empty_dict(),
+    prompts = { listChanged = true },
+    resources = { subscribe = true, listChanged = true },
     tools = { listChanged = true },
-    resources = { subscribe = false, listChanged = true },
   }
 
   M._send_result(client, id, {
     protocolVersion = requested_version,
     capabilities = server_caps,
     serverInfo = {
-      name = SERVER_NAME,
+      name = "claudecode-neovim",
       version = SERVER_VERSION,
     },
-    instructions = "Solomon Neovim MCP server. Provides access to Neovim buffers, diagnostics, and editor operations.",
   })
 end
 
@@ -354,6 +393,7 @@ function M._send_result(client, id, result)
     id = id,
     result = result,
   })
+  M._log("SEND", msg)
   transport.send(client, msg)
 end
 
@@ -371,6 +411,7 @@ function M._send_error(client, id, code, message)
       message = message,
     },
   })
+  M._log("ERROR", msg)
   transport.send(client, msg)
 end
 
@@ -390,14 +431,17 @@ function M.broadcast_notification(method, params)
     method = method,
     params = params or {},
   })
+  local sent_count = 0
   for _, client in pairs(M.instance.ws.clients) do
     if client.upgraded then
       local state = M.instance.clients[client.id]
       if state and state.handshake_complete then
         transport.send(client, msg)
+        sent_count = sent_count + 1
       end
     end
   end
+  M._log("SEND", "Broadcast to " .. sent_count .. " clients: " .. msg:sub(1, 200))
 end
 
 --- Check if any Claude client is connected and handshake complete.
@@ -429,8 +473,12 @@ function M.send_at_mention(filepath, start_line, end_line)
     timestamp = vim.uv.hrtime(),
   }
 
+  M._log("INFO", "send_at_mention: " .. filepath .. ":" .. start_line .. "-" .. end_line
+    .. " connected=" .. tostring(M.is_client_connected()))
+
   if M.is_client_connected() then
-    M.broadcast_notification("notifications/at_mentioned", {
+    M._log("INFO", "Broadcasting at_mentioned immediately")
+    M.broadcast_notification("at_mentioned", {
       filePath = mention.filePath,
       lineStart = mention.lineStart,
       lineEnd = mention.lineEnd,
@@ -454,7 +502,7 @@ function M._flush_mention_queue()
     -- Discard mentions older than 5 seconds
     local age_ms = (now - mention.timestamp) / 1e6
     if age_ms < 10000 then
-      M.broadcast_notification("notifications/at_mentioned", {
+      M.broadcast_notification("at_mentioned", {
         filePath = mention.filePath,
         lineStart = mention.lineStart,
         lineEnd = mention.lineEnd,
@@ -517,27 +565,30 @@ function M._write_lock_file(port, auth_token)
   local config_dir = os.getenv("CLAUDE_CONFIG_DIR") or (os.getenv("HOME") .. "/.claude")
   local ide_dir = config_dir .. "/ide"
 
+  -- Create directory with 0700 permissions
   vim.fn.mkdir(ide_dir, "p")
+  vim.fn.setfperm(ide_dir, "rwx------")
 
   local lock_path = ide_dir .. "/" .. port .. ".lock"
   local lock_data = vim.json.encode({
-    port = port,
-    authToken = auth_token,
     pid = vim.fn.getpid(),
-    workspacePath = vim.fn.getcwd(),
-    serverName = SERVER_NAME,
-    serverVersion = SERVER_VERSION,
+    workspaceFolders = { vim.fn.getcwd() },
+    ideName = "Neovim",
+    transport = "ws",
+    authToken = auth_token,
   })
 
   local f = io.open(lock_path, "w")
   if f then
     f:write(lock_data)
     f:close()
+    -- Set lock file permissions to 0600
+    vim.fn.setfperm(lock_path, "rw-------")
     if M.instance then
       M.instance.lock_path = lock_path
     end
   else
-    vim.notify("[solomon] Failed to write lock file: " .. lock_path, vim.log.levels.WARN)
+    M._log("ERROR", "Failed to write lock file: " .. lock_path)
   end
 end
 

@@ -12,6 +12,7 @@
 ---@field auto_insert boolean Enter insert mode when opening terminal
 
 ---@class solomon.KeymapConfig
+---@field send string Keymap for smart send (selection/file/neo-tree)
 ---@field toggle string Keymap to toggle terminal
 ---@field ask string Keymap for free-form ask (visual)
 ---@field explain string Keymap for explain action
@@ -51,7 +52,8 @@ M.defaults = {
     auto_insert = true,
   },
   keymaps = {
-    toggle = "<leader>aa",
+    send = "<leader>aa",
+    toggle = "<leader>an",
     ask = "<leader>ak",
     explain = "<leader>ae",
     improve = "<leader>ai",

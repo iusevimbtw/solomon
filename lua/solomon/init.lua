@@ -7,12 +7,22 @@ function M.setup(opts)
 	M.register_commands()
 	M.register_keymaps()
 
+	-- Set env vars so Claude Code discovers our MCP server
+	vim.env.ENABLE_IDE_INTEGRATION = "true"
+	vim.env.FORCE_CODE_TERMINAL = "true"
+
 	-- Auto-start MCP server if configured
 	local config = require("solomon.config").options
 	if config.mcp.enabled and config.mcp.auto_start then
 		-- Defer to avoid slowing down startup
 		vim.defer_fn(function()
-			require("solomon.mcp.server").start()
+			local mcp = require("solomon.mcp.server")
+			mcp.start()
+			-- Set the port env var so Claude CLI knows where to connect
+			local port = mcp.get_port()
+			if port then
+				vim.env.CLAUDE_CODE_SSE_PORT = tostring(port)
+			end
 		end, 100)
 	end
 
@@ -34,6 +44,8 @@ function M.register_commands()
 
 		if subcmd == "toggle" or subcmd == "" then
 			require("solomon.terminal").toggle()
+		elseif subcmd == "send" then
+			require("solomon.terminal").send()
 		elseif subcmd == "open" then
 			require("solomon.terminal").open()
 		elseif subcmd == "close" then
@@ -42,6 +54,14 @@ function M.register_commands()
 			require("solomon.mcp.server").start()
 		elseif subcmd == "mcp-stop" then
 			require("solomon.mcp.server").stop()
+		elseif subcmd == "mcp-log" then
+			local mcp = require("solomon.mcp.server")
+			if not mcp._log_enabled then
+				mcp.enable_logging()
+			end
+			if mcp._log_path then
+				vim.cmd("edit " .. vim.fn.fnameescape(mcp._log_path))
+			end
 		elseif subcmd == "mcp-status" then
 			local mcp = require("solomon.mcp.server")
 			if mcp.is_running() then
@@ -83,6 +103,7 @@ function M.register_commands()
 		complete = function()
 			return {
 				"toggle",
+				"send",
 				"open",
 				"close",
 				"diff",
@@ -97,6 +118,7 @@ function M.register_commands()
 				"mcp-start",
 				"mcp-stop",
 				"mcp-status",
+				"mcp-log",
 			}
 		end,
 	})
@@ -112,13 +134,13 @@ function M.register_keymaps()
 		end
 	end
 
+	map({ "n", "v" }, km.send, function()
+		require("solomon.terminal").send()
+	end, "Send to Claude")
+
 	map("n", km.toggle, function()
 		require("solomon.terminal").toggle()
 	end, "Toggle Claude Code")
-
-	map("v", km.toggle, function()
-		require("solomon.terminal").toggle_with_context(true)
-	end, "Toggle Claude Code (with selection)")
 
 	map({ "n", "v" }, km.ask, function()
 		require("solomon.actions").ask()
@@ -167,6 +189,7 @@ function M.register_keymaps()
 	if wk_ok then
 		wk.add({
 			{ "<leader>a", group = "Solomon (AI)", icon = "🤖", mode = { "n", "v" } },
+			{ km.send, icon = "📎", mode = { "n", "v" } },
 			{ km.toggle, icon = "󰄛" },
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
