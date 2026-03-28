@@ -122,11 +122,10 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 
 | Key | Action |
 |-----|--------|
-| `ga` | Apply code block to source |
-| `gy` | Yank code block to clipboard |
-| `gd` | Open diff view vs original |
-| `<C-c>` | Cancel request |
-| `q` | Close |
+| `a` | Apply code block to source |
+| `y` | Yank code block to clipboard |
+| `d` | Open diff view vs original |
+| `q`/`<Esc>` | Cancel and close |
 
 ## Commands
 

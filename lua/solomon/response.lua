@@ -25,7 +25,7 @@ function M.open(source)
     M.close()
   end
 
-  local bottom_hints = " q: close | <C-c>: cancel | ga: apply | gy: yank | gd: diff "
+  local bottom_hints = " q/esc: close | a: apply | y: yank | d: diff "
 
   local Popup = require("nui.popup")
   local popup = Popup({
@@ -130,22 +130,16 @@ function M.open(source)
     M.close()
   end, { noremap = true, silent = true })
 
-  popup:map("n", "<C-c>", function()
-    M.cancel()
-  end, { noremap = true, silent = true })
-
   -- ga: apply code block — replace original selection
-  popup:map("n", "ga", function()
+  popup:map("n", "a", function()
     M.apply_code_block()
   end, { noremap = true, silent = true })
 
-  -- gy: yank code block to clipboard
-  popup:map("n", "gy", function()
+  popup:map("n", "y", function()
     M.yank_code_block()
   end, { noremap = true, silent = true })
 
-  -- gd: open diff view of code block vs original
-  popup:map("n", "gd", function()
+  popup:map("n", "d", function()
     M.diff_code_block()
   end, { noremap = true, silent = true })
 

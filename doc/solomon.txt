@@ -174,12 +174,10 @@ Git:~
   `<leader>ab`   Explain git blame
 
 Response window:~
-  `q`            Close response window
-  `<Esc>`        Close response window
-  `<C-c>`        Cancel streaming request
-  `ga`           Apply code block to source buffer
-  `gy`           Yank code block to clipboard
-  `gd`           Open diff view of code block vs original
+  `q`/`<Esc>`    Cancel and close
+  `a`            Apply code block to source buffer
+  `y`            Yank code block to clipboard
+  `d`            Open diff view of code block vs original
 
 Diff view:~
   `<CR>`         Accept proposed changes
