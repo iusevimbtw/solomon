@@ -97,16 +97,26 @@ function M.resume(session_id)
 end
 
 --- Continue the most recent session in the terminal.
-function M.continue_last()
+---@param context string|nil Optional text to send after opening
+function M.continue_last(context)
   local ok, snacks = pcall(require, "snacks")
   if not ok then
     vim.notify("[solomon] snacks.nvim is required for terminal", vim.log.levels.ERROR)
     return
   end
 
-  local terminal = require("solomon.terminal")
-  local cmd = terminal.build_cmd({ "--continue" })
-  snacks.terminal.open(cmd, terminal.build_opts())
+  local term = require("solomon.terminal")
+  local cmd = term.build_cmd({ "--continue" })
+  local t = snacks.terminal.open(cmd, term.build_opts())
+
+  if context and t and t:buf_valid() then
+    vim.defer_fn(function()
+      local chan = vim.bo[t.buf].channel
+      if chan and chan > 0 then
+        vim.fn.chansend(chan, context)
+      end
+    end, 500)
+  end
 end
 
 --- Open the session picker using Snacks.picker.

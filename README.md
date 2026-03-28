@@ -104,11 +104,13 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 
 ### Terminal & sessions
 
-| Key | Action |
-|-----|--------|
-| `<leader>aa` | Toggle Claude Code terminal |
-| `<leader>as` | Browse sessions |
-| `<leader>ac` | Continue last session |
+| Key | Mode | Action |
+|-----|------|--------|
+| `<leader>aa` | normal | Toggle Claude Code terminal |
+| `<leader>aa` | visual | Toggle terminal + paste selection as context |
+| `<leader>as` | normal | Browse sessions |
+| `<leader>ac` | normal | Continue last session |
+| `<leader>ac` | visual | Continue last session + paste selection as context |
 
 ### Git
 

@@ -165,8 +165,10 @@ Code actions:~
 
 Terminal & sessions:~
   `<leader>aa`   Toggle Claude Code terminal
+                 In visual mode: toggle + paste selection as context
   `<leader>as`   Browse sessions
   `<leader>ac`   Continue last session
+                 In visual mode: continue + paste selection as context
 
 Git:~
   `<leader>ad`   Git diff review

@@ -116,6 +116,10 @@ function M.register_keymaps()
 		require("solomon.terminal").toggle()
 	end, "Toggle Claude Code")
 
+	map("v", km.toggle, function()
+		require("solomon.terminal").toggle_with_context(true)
+	end, "Toggle Claude Code (with selection)")
+
 	map({ "n", "v" }, km.ask, function()
 		require("solomon.actions").ask()
 	end, "Ask Claude")
@@ -139,6 +143,14 @@ function M.register_keymaps()
 	map("n", km.continue_session, function()
 		require("solomon.sessions").continue_last()
 	end, "Continue last session")
+
+	map("v", km.continue_session, function()
+		local utils = require("solomon.utils")
+		local term = require("solomon.terminal")
+		local selection = utils.get_visual_selection()
+		local context = selection and term.format_selection_context(selection) or nil
+		require("solomon.sessions").continue_last(context)
+	end, "Continue session (with selection)")
 
 	map("n", km.diff, function()
 		require("solomon.git").review()

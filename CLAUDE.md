@@ -53,12 +53,17 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 | improve | `<leader>ai` | inline | Fix bugs, refactor, optimize (all-in-one) |
 | task | `<leader>at` | prompt → inline | Custom instruction, inline replace |
 | ask | `<leader>ak` | prompt → popup | Free-form question |
+| toggle | `<leader>aa` | terminal | Toggle Claude Code side panel |
+| toggle (visual) | `<leader>aa` | terminal | Toggle + paste selection as context |
+| continue | `<leader>ac` | terminal | Continue last session |
+| continue (visual) | `<leader>ac` | terminal | Continue + paste selection as context |
 
 ## Key patterns
 
 - All keymaps default to `<leader>a` prefix. Set any keymap to `""` to disable.
 - Normal mode actions use `utils.get_treesitter_context()` to find enclosing function/method/block.
 - Visual mode actions call `utils.get_visual_selection()` which feeds `<Esc>` to set marks before reading `'<` `'>`.
+- `<leader>aa` and `<leader>ac` in visual mode capture the selection and paste it as context into the Claude terminal session.
 - Inline actions use unique namespaces per invocation (`solomon_inline_<hrtime>`) so concurrent spinners don't jitter.
 - Inline actions use extmark IDs for in-place updates (no clear+recreate flicker).
 - Inline actions track selection boundaries with extmarks so concurrent completions don't corrupt each other's line ranges.
