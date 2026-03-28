@@ -7,14 +7,21 @@ local M = {}
 
 ---@class solomon.MCPServer
 ---@field ws solomon.WSServer|nil WebSocket server
----@field initialized boolean
 ---@field lock_path string|nil
 ---@field handlers table<string, fun(params: table, client: solomon.WSClient): table>
+---@field clients table<string, solomon.MCPClientState> Per-client state keyed by client.id
+---@field pending_cancels table<any, boolean> Set of cancelled request IDs
+
+---@class solomon.MCPClientState
+---@field handshake_complete boolean
+---@field protocol_version string|nil
+---@field capabilities table|nil Client's requested capabilities
 
 ---@type solomon.MCPServer|nil
 M.instance = nil
 
 local PROTOCOL_VERSION = "2024-11-05"
+local SUPPORTED_VERSIONS = { ["2024-11-05"] = true, ["2025-03-26"] = true }
 local SERVER_NAME = "solomon-nvim"
 local SERVER_VERSION = "0.1.0"
 
@@ -34,9 +41,21 @@ function M.start()
       M._handle_message(client, message)
     end,
     on_connect = function(client)
+      -- Initialize per-client state
+      if M.instance then
+        M.instance.clients[client.id] = {
+          handshake_complete = false,
+          protocol_version = nil,
+          capabilities = nil,
+        }
+      end
       vim.notify("[solomon] MCP client connected: " .. client.id, vim.log.levels.INFO)
     end,
     on_disconnect = function(client)
+      -- Clean up per-client state
+      if M.instance then
+        M.instance.clients[client.id] = nil
+      end
       vim.notify("[solomon] MCP client disconnected: " .. client.id, vim.log.levels.INFO)
     end,
   })
@@ -48,13 +67,17 @@ function M.start()
 
   M.instance = {
     ws = ws,
-    initialized = false,
     lock_path = nil,
     handlers = tool_handlers,
+    clients = {},
+    pending_cancels = {},
   }
 
   -- Write lock file for Claude Code discovery
   M._write_lock_file(ws.port, ws.auth_token)
+
+  -- Start heartbeat timer to detect dead connections
+  M._start_heartbeat()
 
   vim.notify(
     string.format("[solomon] MCP server started on port %d", ws.port),
@@ -64,13 +87,27 @@ function M.start()
   return true
 end
 
---- Stop the MCP server.
+--- Stop the MCP server with graceful shutdown.
 function M.stop()
   if not M.instance then
     return
   end
 
+  -- Stop heartbeat
+  M._stop_heartbeat()
+
+  -- Send close notification to all clients before shutting down
   if M.instance.ws then
+    for _, client in pairs(M.instance.ws.clients) do
+      if client.upgraded then
+        pcall(function()
+          transport.send(client, vim.json.encode({
+            jsonrpc = "2.0",
+            method = "notifications/server_shutdown",
+          }))
+        end)
+      end
+    end
     transport.stop(M.instance.ws)
   end
 
@@ -112,16 +149,9 @@ function M._handle_message(client, raw)
   if method == "initialize" then
     M._handle_initialize(client, id, params)
   elseif method == "notifications/initialized" then
-    -- Notification, no response needed
-    if M.instance then
-      M.instance.initialized = true
-      -- Flush queued mentions after a brief delay for Claude to be fully ready
-      if #M._mention_queue > 0 then
-        vim.defer_fn(function()
-          M._flush_mention_queue()
-        end, 600)
-      end
-    end
+    M._handle_initialized(client)
+  elseif method == "notifications/cancelled" then
+    M._handle_cancelled(params)
   elseif method == "ping" then
     M._send_result(client, id, {})
   elseif method == "tools/list" then
@@ -140,23 +170,74 @@ function M._handle_message(client, raw)
   end
 end
 
---- Handle initialize request.
+--- Handle initialize request with protocol version negotiation.
 ---@param client solomon.WSClient
 ---@param id any
 ---@param params table
 function M._handle_initialize(client, id, params)
+  local requested_version = params.protocolVersion or PROTOCOL_VERSION
+
+  -- Validate protocol version
+  if not SUPPORTED_VERSIONS[requested_version] then
+    M._send_error(client, id, -32602, "Unsupported protocol version: " .. tostring(requested_version))
+    return
+  end
+
+  -- Store client capabilities
+  if M.instance and M.instance.clients[client.id] then
+    M.instance.clients[client.id].protocol_version = requested_version
+    M.instance.clients[client.id].capabilities = params.capabilities
+  end
+
+  -- Build server capabilities based on what the client supports
+  local server_caps = {
+    tools = { listChanged = true },
+    resources = { subscribe = false, listChanged = true },
+  }
+
   M._send_result(client, id, {
-    protocolVersion = PROTOCOL_VERSION,
-    capabilities = {
-      tools = { listChanged = true },
-      resources = { subscribe = false, listChanged = true },
-    },
+    protocolVersion = requested_version,
+    capabilities = server_caps,
     serverInfo = {
       name = SERVER_NAME,
       version = SERVER_VERSION,
     },
     instructions = "Solomon Neovim MCP server. Provides access to Neovim buffers, diagnostics, and editor operations.",
   })
+end
+
+--- Handle notifications/initialized — client confirms handshake complete.
+---@param client solomon.WSClient
+function M._handle_initialized(client)
+  if M.instance and M.instance.clients[client.id] then
+    M.instance.clients[client.id].handshake_complete = true
+  end
+
+  -- Flush queued mentions after a brief delay for Claude to be fully ready
+  if #M._mention_queue > 0 then
+    vim.defer_fn(function()
+      M._flush_mention_queue()
+    end, 600)
+  end
+end
+
+--- Handle notifications/cancelled — client cancels an in-flight request.
+---@param params table
+function M._handle_cancelled(params)
+  if params.requestId and M.instance then
+    M.instance.pending_cancels[params.requestId] = true
+  end
+end
+
+--- Check if a request has been cancelled.
+---@param id any
+---@return boolean
+function M.is_cancelled(id)
+  if M.instance and M.instance.pending_cancels[id] then
+    M.instance.pending_cancels[id] = nil
+    return true
+  end
+  return false
 end
 
 --- Handle tools/list request.
@@ -182,9 +263,18 @@ function M._handle_tools_call(client, id, params)
     return
   end
 
-  -- Execute the handler (handlers run via vim.schedule for Neovim API safety)
+  -- Check if request was already cancelled
+  if M.is_cancelled(id) then
+    return
+  end
+
   local handler = M.instance.handlers[tool_name]
   local success, result = pcall(handler, arguments, client)
+
+  -- Check again after handler execution
+  if M.is_cancelled(id) then
+    return
+  end
 
   if success then
     M._send_result(client, id, {
@@ -208,7 +298,6 @@ end
 function M._handle_resources_list(client, id)
   local resources = {}
 
-  -- List open buffers as resources
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) then
       local name = vim.api.nvim_buf_get_name(buf)
@@ -285,10 +374,11 @@ function M._send_error(client, id, code, message)
   transport.send(client, msg)
 end
 
---- Mention queue for at_mentioned notifications sent before Claude connects.
+-- ─── Mention queue ───
+
 M._mention_queue = {}
 
---- Broadcast a JSON-RPC notification to all connected clients.
+--- Broadcast a JSON-RPC notification to all connected, handshake-complete clients.
 ---@param method string
 ---@param params table|nil
 function M.broadcast_notification(method, params)
@@ -302,27 +392,32 @@ function M.broadcast_notification(method, params)
   })
   for _, client in pairs(M.instance.ws.clients) do
     if client.upgraded then
-      transport.send(client, msg)
+      local state = M.instance.clients[client.id]
+      if state and state.handshake_complete then
+        transport.send(client, msg)
+      end
     end
   end
 end
 
---- Check if any Claude client is connected and initialized.
+--- Check if any Claude client is connected and handshake complete.
 ---@return boolean
 function M.is_client_connected()
-  if not M.instance or not M.instance.ws or not M.instance.initialized then
+  if not M.instance or not M.instance.ws then
     return false
   end
   for _, client in pairs(M.instance.ws.clients) do
     if client.upgraded then
-      return true
+      local state = M.instance.clients[client.id]
+      if state and state.handshake_complete then
+        return true
+      end
     end
   end
   return false
 end
 
 --- Send an at_mentioned notification for a file selection.
---- If Claude is not connected, queues the mention for delivery after handshake.
 ---@param filepath string Absolute file path
 ---@param start_line integer 1-indexed
 ---@param end_line integer 1-indexed
@@ -341,19 +436,16 @@ function M.send_at_mention(filepath, start_line, end_line)
       lineEnd = mention.lineEnd,
     })
   else
-    -- Queue for delivery when Claude connects
     table.insert(M._mention_queue, mention)
   end
 end
 
 --- Flush queued mentions to connected clients.
---- Called after Claude completes handshake.
 function M._flush_mention_queue()
   local now = vim.uv.hrtime()
   local queue = M._mention_queue
   M._mention_queue = {}
 
-  -- Process sequentially with 25ms delays between mentions
   local function send_next(idx)
     if idx > #queue then
       return
@@ -378,6 +470,46 @@ function M._flush_mention_queue()
   send_next(1)
 end
 
+-- ─── Heartbeat ───
+
+M._heartbeat_timer = nil
+
+--- Start a heartbeat timer that pings clients periodically.
+function M._start_heartbeat()
+  M._stop_heartbeat()
+  local timer = vim.uv.new_timer()
+  M._heartbeat_timer = timer
+  -- Ping every 30 seconds
+  timer:start(30000, 30000, vim.schedule_wrap(function()
+    if not M.instance or not M.instance.ws then
+      M._stop_heartbeat()
+      return
+    end
+    for socket, client in pairs(M.instance.ws.clients) do
+      if client.upgraded then
+        -- Send WebSocket ping frame
+        pcall(function()
+          local frame = require("solomon.mcp.transport")._encode_frame(0x9, "")
+          socket:write(frame)
+        end)
+      end
+    end
+  end))
+end
+
+--- Stop the heartbeat timer.
+function M._stop_heartbeat()
+  if M._heartbeat_timer then
+    M._heartbeat_timer:stop()
+    if not M._heartbeat_timer:is_closing() then
+      M._heartbeat_timer:close()
+    end
+    M._heartbeat_timer = nil
+  end
+end
+
+-- ─── Lock file ───
+
 --- Write the lock file for Claude Code discovery.
 ---@param port integer
 ---@param auth_token string
@@ -385,7 +517,6 @@ function M._write_lock_file(port, auth_token)
   local config_dir = os.getenv("CLAUDE_CONFIG_DIR") or (os.getenv("HOME") .. "/.claude")
   local ide_dir = config_dir .. "/ide"
 
-  -- Ensure the directory exists
   vim.fn.mkdir(ide_dir, "p")
 
   local lock_path = ide_dir .. "/" .. port .. ".lock"
