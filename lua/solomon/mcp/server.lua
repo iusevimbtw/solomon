@@ -115,6 +115,12 @@ function M._handle_message(client, raw)
     -- Notification, no response needed
     if M.instance then
       M.instance.initialized = true
+      -- Flush queued mentions after a brief delay for Claude to be fully ready
+      if #M._mention_queue > 0 then
+        vim.defer_fn(function()
+          M._flush_mention_queue()
+        end, 600)
+      end
     end
   elseif method == "ping" then
     M._send_result(client, id, {})
@@ -277,6 +283,99 @@ function M._send_error(client, id, code, message)
     },
   })
   transport.send(client, msg)
+end
+
+--- Mention queue for at_mentioned notifications sent before Claude connects.
+M._mention_queue = {}
+
+--- Broadcast a JSON-RPC notification to all connected clients.
+---@param method string
+---@param params table|nil
+function M.broadcast_notification(method, params)
+  if not M.instance or not M.instance.ws then
+    return
+  end
+  local msg = vim.json.encode({
+    jsonrpc = "2.0",
+    method = method,
+    params = params or {},
+  })
+  for _, client in pairs(M.instance.ws.clients) do
+    if client.upgraded then
+      transport.send(client, msg)
+    end
+  end
+end
+
+--- Check if any Claude client is connected and initialized.
+---@return boolean
+function M.is_client_connected()
+  if not M.instance or not M.instance.ws or not M.instance.initialized then
+    return false
+  end
+  for _, client in pairs(M.instance.ws.clients) do
+    if client.upgraded then
+      return true
+    end
+  end
+  return false
+end
+
+--- Send an at_mentioned notification for a file selection.
+--- If Claude is not connected, queues the mention for delivery after handshake.
+---@param filepath string Absolute file path
+---@param start_line integer 1-indexed
+---@param end_line integer 1-indexed
+function M.send_at_mention(filepath, start_line, end_line)
+  local mention = {
+    filePath = filepath,
+    lineStart = start_line,
+    lineEnd = end_line,
+    timestamp = vim.uv.hrtime(),
+  }
+
+  if M.is_client_connected() then
+    M.broadcast_notification("notifications/at_mentioned", {
+      filePath = mention.filePath,
+      lineStart = mention.lineStart,
+      lineEnd = mention.lineEnd,
+    })
+  else
+    -- Queue for delivery when Claude connects
+    table.insert(M._mention_queue, mention)
+  end
+end
+
+--- Flush queued mentions to connected clients.
+--- Called after Claude completes handshake.
+function M._flush_mention_queue()
+  local now = vim.uv.hrtime()
+  local queue = M._mention_queue
+  M._mention_queue = {}
+
+  -- Process sequentially with 25ms delays between mentions
+  local function send_next(idx)
+    if idx > #queue then
+      return
+    end
+    local mention = queue[idx]
+    -- Discard mentions older than 5 seconds
+    local age_ms = (now - mention.timestamp) / 1e6
+    if age_ms < 5000 then
+      M.broadcast_notification("notifications/at_mentioned", {
+        filePath = mention.filePath,
+        lineStart = mention.lineStart,
+        lineEnd = mention.lineEnd,
+      })
+    end
+    if idx < #queue then
+      vim.defer_fn(function()
+        send_next(idx + 1)
+      end, 25)
+    end
+  end
+
+  send_next(1)
 end
 
 --- Write the lock file for Claude Code discovery.

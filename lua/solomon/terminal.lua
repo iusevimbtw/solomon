@@ -77,20 +77,7 @@ function M.open()
   end
 end
 
---- Send text to the Claude terminal's stdin.
----@param terminal table snacks terminal instance
----@param text string
-local function send_to_terminal(terminal, text)
-  if not terminal or not terminal:buf_valid() then
-    return
-  end
-  local chan = vim.bo[terminal.buf].channel
-  if chan and chan > 0 then
-    vim.fn.chansend(chan, text)
-  end
-end
-
---- Format a selection as context text to paste into Claude.
+--- Format a selection as context text for display/testing.
 ---@param selection {lines: string[], filepath: string, start_line: integer, filetype: string}
 ---@return string
 function M.format_selection_context(selection)
@@ -99,18 +86,20 @@ function M.format_selection_context(selection)
     selection.filepath, selection.start_line, selection.filetype, code)
 end
 
---- Get visual selection and format as context text.
----@return string|nil
-local function build_selection_context()
+--- Send the visual selection to Claude via MCP at_mentioned broadcast.
+---@return boolean sent Whether the mention was sent or queued
+local function send_selection_via_mcp()
   local utils = require("solomon.utils")
   local selection = utils.get_visual_selection()
   if not selection then
-    return nil
+    return false
   end
-  return M.format_selection_context(selection)
+  local server = require("solomon.mcp.server")
+  server.send_at_mention(selection.filepath, selection.start_line, selection.end_line)
+  return true
 end
 
---- Toggle the Claude Code terminal, optionally sending visual selection as context.
+--- Toggle the Claude Code terminal, optionally sending visual selection as context via MCP.
 ---@param with_context boolean|nil
 function M.toggle_with_context(with_context)
   local ok, snacks = pcall(require, "snacks")
@@ -119,25 +108,13 @@ function M.toggle_with_context(with_context)
     return
   end
 
-  local context = with_context and build_selection_context() or nil
-
-  local terminal, created = snacks.terminal.get(M.build_cmd(), M.build_opts())
-  if created then
-    -- New terminal — wait briefly for Claude to start, then send context
-    if context and terminal then
-      vim.defer_fn(function()
-        send_to_terminal(terminal, context)
-      end, 500)
-    end
-  else
-    if terminal then
-      terminal:toggle()
-      -- If we're showing it and have context, send it
-      if context and terminal:win_valid() then
-        send_to_terminal(terminal, context)
-      end
-    end
+  -- Capture selection before toggling (visual mode will be exited)
+  if with_context then
+    send_selection_via_mcp()
   end
+
+  -- Toggle the terminal
+  snacks.terminal.toggle(M.build_cmd(), M.build_opts())
 end
 
 --- Close the Claude Code terminal if open.

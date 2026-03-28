@@ -97,26 +97,23 @@ function M.resume(session_id)
 end
 
 --- Continue the most recent session in the terminal.
----@param context string|nil Optional text to send after opening
-function M.continue_last(context)
+---@param selection table|nil Optional selection to send via MCP at_mention
+function M.continue_last(selection)
   local ok, snacks = pcall(require, "snacks")
   if not ok then
     vim.notify("[solomon] snacks.nvim is required for terminal", vim.log.levels.ERROR)
     return
   end
 
+  -- Send selection via MCP (will queue if Claude isn't connected yet)
+  if selection then
+    local server = require("solomon.mcp.server")
+    server.send_at_mention(selection.filepath, selection.start_line, selection.end_line)
+  end
+
   local term = require("solomon.terminal")
   local cmd = term.build_cmd({ "--continue" })
-  local t = snacks.terminal.open(cmd, term.build_opts())
-
-  if context and t and t:buf_valid() then
-    vim.defer_fn(function()
-      local chan = vim.bo[t.buf].channel
-      if chan and chan > 0 then
-        vim.fn.chansend(chan, context)
-      end
-    end, 500)
-  end
+  snacks.terminal.open(cmd, term.build_opts())
 end
 
 --- Open the session picker using Snacks.picker.

@@ -146,10 +146,8 @@ function M.register_keymaps()
 
 	map("v", km.continue_session, function()
 		local utils = require("solomon.utils")
-		local term = require("solomon.terminal")
 		local selection = utils.get_visual_selection()
-		local context = selection and term.format_selection_context(selection) or nil
-		require("solomon.sessions").continue_last(context)
+		require("solomon.sessions").continue_last(selection)
 	end, "Continue session (with selection)")
 
 	map("n", km.diff, function()
