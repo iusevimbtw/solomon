@@ -208,13 +208,13 @@ describe("solomon.mcp.server", function()
       assert.equals(0, #server._mention_queue)
     end)
 
-    it("flush discards mentions older than 5 seconds", function()
+    it("flush discards mentions older than 10 seconds", function()
       -- Insert a mention with a very old timestamp
       table.insert(server._mention_queue, {
         filePath = "/tmp/old.lua",
         lineStart = 1,
         lineEnd = 5,
-        timestamp = vim.uv.hrtime() - (6 * 1e9), -- 6 seconds ago
+        timestamp = vim.uv.hrtime() - (11 * 1e9), -- 11 seconds ago
       })
 
       -- This should discard the old mention (no error, just skipped)
