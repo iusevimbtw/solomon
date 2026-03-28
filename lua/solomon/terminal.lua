@@ -51,30 +51,30 @@ function M.build_opts()
   }
 end
 
---- Open the Claude Code terminal. If any Claude terminal is already open, focuses it.
---- If a different Claude session is running (e.g. --continue), closes it first.
+--- Open a new Claude Code terminal. Closes any existing Claude terminals first.
 function M.open()
   local ok, snacks = pcall(require, "snacks")
   if not ok then
     vim.notify("[solomon] snacks.nvim is required for terminal support", vim.log.levels.ERROR)
     return
   end
+  M.close_all()
+  snacks.terminal.open(M.build_cmd(), M.build_opts())
+end
 
-  -- Check if any Claude terminal is already visible — focus it
+--- Focus the existing Claude Code terminal. If none is visible, does nothing.
+function M.focus()
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_is_valid(win) then
       local buf = vim.api.nvim_win_get_buf(win)
       local name = vim.api.nvim_buf_get_name(buf)
       if name:find(":/usr/bin/claude") or name:find(":/usr/local/bin/claude") then
         vim.api.nvim_set_current_win(win)
+        vim.cmd("startinsert")
         return
       end
     end
   end
-
-  -- No Claude terminal visible — close any hidden ones and open fresh
-  M.close_all()
-  snacks.terminal.open(M.build_cmd(), M.build_opts())
 end
 
 --- Format a selection as context text for display/testing.

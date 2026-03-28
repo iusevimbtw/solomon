@@ -50,6 +50,8 @@ function M.register_commands()
 			require("solomon.terminal").open()
 		elseif subcmd == "close" then
 			require("solomon.terminal").close()
+		elseif subcmd == "focus" then
+			require("solomon.terminal").focus()
 		elseif subcmd == "mcp-start" then
 			require("solomon.mcp.server").start()
 		elseif subcmd == "mcp-stop" then
@@ -106,6 +108,7 @@ function M.register_commands()
 				"send",
 				"open",
 				"close",
+				"focus",
 				"diff",
 				"diff-staged",
 				"diff-hunk",
@@ -140,7 +143,11 @@ function M.register_keymaps()
 
 	map("n", km.toggle, function()
 		require("solomon.terminal").open()
-	end, "Toggle Claude Code")
+	end, "Open Claude Code")
+
+	map("n", km.focus, function()
+		require("solomon.terminal").focus()
+	end, "Focus Claude Code")
 
 	map({ "n", "v" }, km.ask, function()
 		require("solomon.actions").ask()
@@ -191,6 +198,7 @@ function M.register_keymaps()
 			{ "<leader>a", group = "Solomon (AI)", icon = "🤖", mode = { "n", "v" } },
 			{ km.send, icon = "📎", mode = { "n", "v" } },
 			{ km.toggle, icon = "󰄛" },
+			{ km.focus, icon = "🎯" },
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
 			{ km.improve, icon = "✨", mode = { "n", "v" } },
