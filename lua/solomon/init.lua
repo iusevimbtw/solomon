@@ -43,7 +43,7 @@ function M.register_commands()
 		local subcmd = args[1] or ""
 
 		if subcmd == "toggle" or subcmd == "" then
-			require("solomon.terminal").toggle()
+			require("solomon.terminal").open()
 		elseif subcmd == "send" then
 			require("solomon.terminal").send()
 		elseif subcmd == "open" then
@@ -139,7 +139,7 @@ function M.register_keymaps()
 	end, "Send to Claude")
 
 	map("n", km.toggle, function()
-		require("solomon.terminal").toggle()
+		require("solomon.terminal").open()
 	end, "Toggle Claude Code")
 
 	map({ "n", "v" }, km.ask, function()

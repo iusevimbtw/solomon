@@ -51,17 +51,7 @@ function M.build_opts()
   }
 end
 
---- Toggle the Claude Code terminal.
-function M.toggle()
-  local ok, snacks = pcall(require, "snacks")
-  if not ok then
-    vim.notify("[solomon] snacks.nvim is required for terminal support", vim.log.levels.ERROR)
-    return
-  end
-  snacks.terminal.toggle(M.build_cmd(), M.build_opts())
-end
-
---- Open the Claude Code terminal (without toggling).
+--- Open the Claude Code terminal. If already open, focuses it.
 function M.open()
   local ok, snacks = pcall(require, "snacks")
   if not ok then
