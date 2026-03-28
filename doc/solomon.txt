@@ -1,6 +1,6 @@
 *solomon.txt*    Claude Code integration for Neovim
 
-Author: solomon.nvim contributors
+Author: Aiden
 License: MIT
 
 ==============================================================================
@@ -27,13 +27,15 @@ editor. It provides a hybrid architecture combining terminal embedding with
 an MCP bridge for bidirectional communication.
 
 Features:
-- Toggle Claude Code CLI in a floating window or split
-- Visual selection actions (explain, refactor, fix, optimize, tests, ask)
+- Toggle Claude Code CLI in a side panel or floating window
+- Code actions (explain, improve, task, ask) in normal and visual mode
+- Inline replace with animated spinner for improve and task actions
 - Streaming response display with code block apply
 - MCP server for bidirectional editor integration
 - Session management with picker
-- Git integration (review, commit messages, blame)
+- Git integration (diff review, commit messages, blame)
 - Lualine statusline component
+- Auto-includes surrounding context, CLAUDE.md, and LSP diagnostics
 
 ==============================================================================
 2. REQUIREMENTS                                         *solomon-requirements*
@@ -79,41 +81,39 @@ Call `require("solomon").setup(opts)` with any of these options:
 >lua
   require("solomon").setup({
     terminal = {
-      style = "float",           -- "float" or "split"
+      style = "split",          -- "float" or "split"
       float_opts = {
-        width = 0.8,             -- 0-1 for percentage
+        width = 0.8,            -- 0-1 for percentage
         height = 0.8,
         border = "rounded",
       },
       split_opts = {
-        position = "right",      -- "left", "right", "top", "bottom"
+        position = "right",     -- "left", "right", "top", "bottom"
         size = 0.4,
       },
-      auto_close = true,         -- close terminal when CLI exits
-      auto_insert = true,        -- enter insert mode on open
+      auto_close = true,        -- close terminal when CLI exits
+      auto_insert = true,       -- enter insert mode on open
     },
     keymaps = {
       toggle = "<leader>aa",
       ask = "<leader>ak",
       explain = "<leader>ae",
-      refactor = "<leader>ar",
-      fix = "<leader>af",
-      optimize = "<leader>ao",
-      tests = "<leader>at",
+      improve = "<leader>ai",
+      task = "<leader>at",
       sessions = "<leader>as",
       continue_session = "<leader>ac",
-      review = "<leader>aR",
+      diff = "<leader>ad",
       commit = "<leader>am",
       blame = "<leader>ab",
     },
     cli = {
-      cmd = "claude",            -- path to claude binary
-      model = nil,               -- model override (e.g. "opus", "sonnet")
-      args = {},                 -- extra CLI arguments
+      cmd = "claude",           -- path to claude binary
+      model = nil,              -- model override (e.g. "opus", "sonnet")
+      args = {},                -- extra CLI arguments
     },
     mcp = {
-      enabled = true,            -- enable MCP server
-      auto_start = true,         -- start on plugin setup
+      enabled = true,           -- enable MCP server
+      auto_start = true,        -- start on plugin setup
     },
   })
 <
@@ -132,9 +132,9 @@ Terminal:~
   `:Solomon close`        Close Claude Code terminal
 
 Git:~
-  `:Solomon review`       Review unstaged git diff
-  `:Solomon review-staged` Review staged git diff
-  `:Solomon review-hunk`  Review current git hunk
+  `:Solomon diff`         Review unstaged git diff
+  `:Solomon diff-staged`  Review staged git diff
+  `:Solomon diff-hunk`    Review current git hunk
   `:Solomon commit`       Generate commit message from staged changes
   `:Solomon blame`        Explain git blame for current line
 
@@ -154,29 +154,31 @@ MCP:~
 
 Default keymaps (all under `<leader>a` prefix):
 
-Normal mode:~
+All code actions work in both normal and visual mode. In normal mode,
+treesitter selects the enclosing function/method/block.
+
+Code actions:~
+  `<leader>ae`   Explain code (popup response)
+  `<leader>ai`   Improve code — fix, refactor, optimize (inline replace)
+  `<leader>at`   Task — custom prompt, inline replace
+  `<leader>ak`   Ask Claude — free-form question (popup response)
+
+Terminal & sessions:~
   `<leader>aa`   Toggle Claude Code terminal
   `<leader>as`   Browse sessions
   `<leader>ac`   Continue last session
-  `<leader>aR`   Review git diff
+
+Git:~
+  `<leader>ad`   Git diff review
   `<leader>am`   Generate commit message
   `<leader>ab`   Explain git blame
-
-Visual mode:~
-  `<leader>ak`   Ask Claude (free-form prompt)
-  `<leader>ae`   Explain selected code
-  `<leader>ar`   Refactor selected code
-  `<leader>af`   Fix selected code
-  `<leader>ao`   Optimize selected code
-  `<leader>at`   Generate tests for selected code
-  `<leader>ab`   Explain git blame for selection
 
 Response window:~
   `q`            Close response window
   `<Esc>`        Close response window
   `<C-c>`        Cancel streaming request
-  `ga`           Apply code block under cursor to source
-  `gy`           Yank code block under cursor to clipboard
+  `ga`           Apply code block to source buffer
+  `gy`           Yank code block to clipboard
   `gd`           Open diff view of code block vs original
 
 Diff view:~
@@ -193,18 +195,23 @@ Prompt window:~
 ==============================================================================
 7. ACTIONS                                                   *solomon-actions*
 
-Visual selection actions send the selected code to Claude with a predefined
-prompt template. The response streams into a floating markdown window.
+Actions send code to Claude and display the result either inline (replacing
+the selection) or in a popup response window.
 
-Available actions:~
-  `explain`    — Explain the selected code
-  `refactor`   — Suggest refactoring improvements
-  `fix`        — Find and fix bugs
-  `optimize`   — Optimize for performance
-  `tests`      — Generate test cases
-  `ask`        — Free-form prompt with code context
+Inline actions (spinner in buffer, auto-replace):~
+  `improve`  — Fix bugs, refactor, and optimize in one pass
+  `task`     — Custom instruction with prompt window first
 
-Actions use `claude -p --output-format stream-json` for real-time streaming.
+Popup actions (streaming markdown response):~
+  `explain`  — Explain the code
+  `ask`      — Free-form question with code context
+
+All actions auto-include:
+- Surrounding context (treesitter enclosing function or 15-line fallback)
+- Project conventions from CLAUDE.md
+- LSP diagnostics for the selected range
+
+Actions use `claude -p --output-format stream-json --verbose` for streaming.
 
 ==============================================================================
 8. MCP SERVER                                                   *solomon-mcp*
@@ -247,11 +254,14 @@ The preview panel shows the first 10 messages of the selected session.
 
 Git-aware features that send context to Claude:
 
-`:Solomon review`~
+`:Solomon diff`~
   Sends the current `git diff` to Claude for code review.
 
-`:Solomon review-staged`~
+`:Solomon diff-staged`~
   Sends `git diff --staged` for review.
+
+`:Solomon diff-hunk`~
+  Reviews just the current gitsigns hunk (requires gitsigns.nvim).
 
 `:Solomon commit`~
   Sends staged diff and recent commit log. Claude generates a commit
@@ -260,9 +270,6 @@ Git-aware features that send context to Claude:
 `:Solomon blame`~
   Runs `git blame --porcelain` on the current line or visual selection
   and asks Claude to explain the history.
-
-If gitsigns.nvim is available, `:Solomon review-hunk` reviews just the
-current git hunk.
 
 ==============================================================================
 11. STATUSLINE                                           *solomon-statusline*

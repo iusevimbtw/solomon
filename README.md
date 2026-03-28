@@ -4,14 +4,16 @@ Claude Code integration for Neovim. A hybrid architecture combining terminal emb
 
 ## Features
 
-- **Terminal** — Toggle Claude Code CLI in a floating window or split
-- **Visual Actions** — Select code and ask Claude to explain, refactor, fix, optimize, or generate tests
+- **Terminal** — Claude Code CLI in a side panel or floating window
+- **Code Actions** — Explain, improve, task, or ask about code in normal or visual mode
+- **Inline Replace** — Animated spinner in buffer, auto-replaces selection with Claude's response
 - **Streaming Responses** — Real-time streaming display with markdown highlighting
-- **Code Apply** — Apply code blocks from Claude's response directly into your source buffer
+- **Code Apply** — Apply code blocks from responses directly into your source buffer
 - **MCP Server** — WebSocket server that lets Claude Code read your buffers, propose diffs, and access diagnostics
 - **Session Management** — Browse, resume, and continue Claude Code conversations with a picker
-- **Git Integration** — Code review, commit message generation, blame explanation
+- **Git Integration** — Diff review, commit message generation, blame explanation
 - **Statusline** — Lualine component showing MCP status, model, and cost
+- **Context Aware** — Auto-includes surrounding code, CLAUDE.md conventions, and LSP diagnostics
 
 ## Requirements
 
@@ -50,7 +52,7 @@ Optional: [snacks.nvim](https://github.com/folke/snacks.nvim), [lualine.nvim](ht
 ```lua
 require("solomon").setup({
   terminal = {
-    style = "float",         -- "float" or "split"
+    style = "split",         -- "float" or "split"
     float_opts = {
       width = 0.8,
       height = 0.8,
@@ -67,13 +69,11 @@ require("solomon").setup({
     toggle = "<leader>aa",
     ask = "<leader>ak",
     explain = "<leader>ae",
-    refactor = "<leader>ar",
-    fix = "<leader>af",
-    optimize = "<leader>ao",
-    tests = "<leader>at",
+    improve = "<leader>ai",
+    task = "<leader>at",
     sessions = "<leader>as",
     continue_session = "<leader>ac",
-    review = "<leader>aR",
+    diff = "<leader>ad",
     commit = "<leader>am",
     blame = "<leader>ab",
   },
@@ -91,27 +91,32 @@ require("solomon").setup({
 
 ## Keymaps
 
-### Normal mode
+All actions work in both normal mode (treesitter selects enclosing function) and visual mode.
+
+### Code actions
+
+| Key | Action | Mode |
+|-----|--------|------|
+| `<leader>ae` | Explain code | popup |
+| `<leader>ai` | Improve code (fix + refactor + optimize) | inline |
+| `<leader>at` | Task (custom prompt, inline replace) | prompt → inline |
+| `<leader>ak` | Ask Claude (free-form question) | prompt → popup |
+
+### Terminal & sessions
 
 | Key | Action |
 |-----|--------|
 | `<leader>aa` | Toggle Claude Code terminal |
 | `<leader>as` | Browse sessions |
 | `<leader>ac` | Continue last session |
-| `<leader>aR` | Review git diff |
-| `<leader>am` | Generate commit message |
-| `<leader>ab` | Explain git blame |
 
-### Visual mode
+### Git
 
 | Key | Action |
 |-----|--------|
-| `<leader>ak` | Ask Claude (free-form) |
-| `<leader>ae` | Explain code |
-| `<leader>ar` | Refactor code |
-| `<leader>af` | Fix code |
-| `<leader>ao` | Optimize code |
-| `<leader>at` | Generate tests |
+| `<leader>ad` | Git diff review |
+| `<leader>am` | Generate commit message |
+| `<leader>ab` | Explain git blame |
 
 ### Response window
 
@@ -127,12 +132,15 @@ require("solomon").setup({
 
 ```vim
 :Solomon                  " Toggle terminal
-:Solomon review           " Review unstaged changes
-:Solomon review-staged    " Review staged changes
+:Solomon diff             " Review unstaged changes
+:Solomon diff-staged      " Review staged changes
+:Solomon diff-hunk        " Review current hunk
 :Solomon commit           " Generate commit message
 :Solomon blame            " Explain git blame
 :Solomon sessions         " Browse all sessions
+:Solomon sessions-project " Browse project sessions
 :Solomon continue         " Continue last session
+:Solomon resume [id]      " Resume specific session
 :Solomon mcp-start        " Start MCP server
 :Solomon mcp-stop         " Stop MCP server
 :Solomon mcp-status       " Show MCP status
