@@ -2,6 +2,7 @@
 --- Uses vim.uv TCP server with RFC 6455 WebSocket framing.
 
 local sha1 = require("solomon.mcp.sha1")
+local zlib = require("solomon.mcp.zlib")
 local bit = require("bit")
 local band, bor, bxor, lshift, rshift = bit.band, bit.bor, bit.bxor, bit.lshift, bit.rshift
 
@@ -81,6 +82,7 @@ function M.create(opts)
     local client = {
       socket = client_socket,
       upgraded = false,
+      deflate_enabled = false,
       buffer = "",
       id = M._generate_token():sub(1, 8),
     }
@@ -139,7 +141,18 @@ function M.send(client, message)
   if not client.upgraded then
     return
   end
-  local frame = M._encode_frame(OP_TEXT, message)
+  local frame
+  if client.deflate_enabled then
+    local compressed, err = zlib.deflate_raw(message)
+    if compressed then
+      frame = M._encode_frame(OP_TEXT, compressed, true)
+    else
+      -- Fallback to uncompressed if compression fails
+      frame = M._encode_frame(OP_TEXT, message)
+    end
+  else
+    frame = M._encode_frame(OP_TEXT, message)
+  end
   pcall(function()
     client.socket:write(frame)
   end)
@@ -218,6 +231,14 @@ function M._handle_upgrade(server, client, data)
   -- Check if client requested a WebSocket subprotocol
   local ws_protocol = get_header(request, "Sec-WebSocket-Protocol")
 
+  -- Check if client requested permessage-deflate compression
+  local ws_extensions = get_header(request, "Sec-WebSocket-Extensions")
+  local deflate_negotiated = false
+  if ws_extensions and ws_extensions:find("permessage%-deflate") and zlib.is_available() then
+    deflate_negotiated = true
+    client.deflate_enabled = true
+  end
+
   -- Send upgrade response
   local response_lines = {
     "HTTP/1.1 101 Switching Protocols",
@@ -227,11 +248,14 @@ function M._handle_upgrade(server, client, data)
   }
   -- Echo back the subprotocol if requested
   if ws_protocol then
-    -- Take the first protocol if multiple are offered
     local first_protocol = ws_protocol:match("^([^,]+)")
     if first_protocol then
       table.insert(response_lines, "Sec-WebSocket-Protocol: " .. vim.trim(first_protocol))
     end
+  end
+  -- Acknowledge permessage-deflate if negotiated
+  if deflate_negotiated then
+    table.insert(response_lines, "Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover")
   end
   table.insert(response_lines, "")
   table.insert(response_lines, "")
@@ -268,6 +292,17 @@ function M._handle_ws_data(server, client, data)
     client.buffer = client.buffer:sub(bytes_consumed + 1)
 
     if frame.opcode == OP_TEXT then
+      -- Decompress if RSV1 is set (permessage-deflate)
+      if frame.rsv1 and client.deflate_enabled then
+        local decompressed, err = zlib.inflate_raw(payload)
+        if decompressed then
+          payload = decompressed
+        else
+          pcall(function()
+            require("solomon.mcp.server")._log("ERROR", "Inflate failed: " .. tostring(err))
+          end)
+        end
+      end
       vim.schedule(function()
         server.on_message(client, payload)
       end)
@@ -325,6 +360,7 @@ function M._decode_frame(data)
   local b2 = data:byte(2)
 
   local fin = band(b1, 0x80) ~= 0
+  local rsv1 = band(b1, 0x40) ~= 0 -- permessage-deflate compressed flag
   local opcode = band(b1, 0x0F)
   local masked = band(b2, 0x80) ~= 0
   local payload_len = band(b2, 0x7F)
@@ -377,7 +413,7 @@ function M._decode_frame(data)
     chunks[#chunks + 1] = string.char(unpack(payload_bytes, i, end_i))
   end
   local payload = table.concat(chunks)
-  local frame = { fin = fin, opcode = opcode }
+  local frame = { fin = fin, rsv1 = rsv1, opcode = opcode }
 
   return frame, payload, offset + payload_len
 end
@@ -385,23 +421,29 @@ end
 --- Encode a WebSocket frame (server → client, unmasked).
 ---@param opcode integer
 ---@param payload string
+---@param compressed boolean|nil Set RSV1 bit for permessage-deflate
 ---@return string
-function M._encode_frame(opcode, payload)
+function M._encode_frame(opcode, payload, compressed)
   local len = #payload
   local header
+  -- FIN (0x80) + optional RSV1 (0x40) + opcode
+  local first_byte = bor(0x80, opcode)
+  if compressed then
+    first_byte = bor(first_byte, 0x40)
+  end
 
   if len <= 125 then
-    header = string.char(bor(0x80, opcode), len)
+    header = string.char(first_byte, len)
   elseif len <= 65535 then
     header = string.char(
-      bor(0x80, opcode),
+      first_byte,
       126,
       band(rshift(len, 8), 0xFF),
       band(len, 0xFF)
     )
   else
     header = string.char(
-      bor(0x80, opcode),
+      first_byte,
       127,
       0, 0, 0, 0, -- high 32 bits
       band(rshift(len, 24), 0xFF),

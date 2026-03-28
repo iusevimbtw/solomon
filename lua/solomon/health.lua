@@ -65,6 +65,14 @@ function M.check()
     end
   end
 
+  -- Check zlib for WebSocket compression
+  local zlib_ok, zlib_mod = pcall(require, "solomon.mcp.zlib")
+  if zlib_ok and zlib_mod.is_available() then
+    vim.health.ok("zlib available (" .. (zlib_mod.version() or "?") .. ") — permessage-deflate enabled")
+  else
+    vim.health.info("zlib not available — WebSocket compression disabled")
+  end
+
   -- Check lock file directory
   local config_dir = os.getenv("CLAUDE_CONFIG_DIR") or (os.getenv("HOME") .. "/.claude")
   local ide_dir = config_dir .. "/ide"
