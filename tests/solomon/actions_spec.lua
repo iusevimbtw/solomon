@@ -464,4 +464,103 @@ describe("solomon.actions", function()
       assert.equals("", ctx)
     end)
   end)
+
+  describe("_build_context_str", function()
+    it("returns formatted context with surrounding code", function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, {
+        "line 1", "line 2", "line 3", "line 4", "line 5",
+      })
+
+      local selection = {
+        lines = { "line 3" },
+        filetype = "lua",
+        filename = "test.lua",
+        start_line = 3,
+      }
+      local source = { bufnr = bufnr, start_line = 3, end_line = 3 }
+
+      local result = actions._build_context_str(selection, source)
+      assert.is_string(result)
+      assert.truthy(result:find("test.lua", 1, true))
+      assert.truthy(result:find("line 3", 1, true))
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+  end)
+
+  describe("_build_full_prompt", function()
+    it("expands template placeholders", function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "local x = 1" })
+
+      local action = {
+        name = "Test",
+        prompt_template = "Do something: {context}",
+      }
+      local selection = {
+        lines = { "local x = 1" },
+        filetype = "lua",
+        filename = "t.lua",
+        start_line = 1,
+      }
+      local source = { bufnr = bufnr, start_line = 1, end_line = 1 }
+
+      local result = actions._build_full_prompt(action, selection, source)
+      assert.truthy(result:find("Do something:", 1, true))
+      assert.truthy(result:find("local x = 1", 1, true))
+      -- Template placeholders should be gone
+      assert.is_falsy(result:find("{context}", 1, true))
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+
+    it("includes user_prompt when provided", function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "code" })
+
+      local action = {
+        name = "Task",
+        prompt_template = "{user_prompt}\n{context}",
+      }
+      local selection = { lines = { "code" }, filetype = "lua", filename = "f.lua", start_line = 1 }
+      local source = { bufnr = bufnr, start_line = 1, end_line = 1 }
+
+      local result = actions._build_full_prompt(action, selection, source, "make it async")
+      assert.truthy(result:find("make it async", 1, true))
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+  end)
+
+  describe("_build_diagnostics_context", function()
+    it("returns empty string when no diagnostics", function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "clean code" })
+
+      local source = { bufnr = bufnr, start_line = 1, end_line = 1 }
+      local result = actions._build_diagnostics_context(source)
+      assert.equals("", result)
+
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+
+    it("includes diagnostic text when present", function()
+      local bufnr = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, { "bad code" })
+
+      local ns = vim.api.nvim_create_namespace("test_actions_diag")
+      vim.diagnostic.set(ns, bufnr, {
+        { lnum = 0, col = 0, message = "unused variable", severity = vim.diagnostic.severity.WARN },
+      })
+
+      local source = { bufnr = bufnr, start_line = 1, end_line = 1 }
+      local result = actions._build_diagnostics_context(source)
+      assert.truthy(result:find("unused variable", 1, true))
+      assert.truthy(result:find("LSP Diagnostics", 1, true))
+
+      vim.diagnostic.reset(ns, bufnr)
+      vim.api.nvim_buf_delete(bufnr, { force = true })
+    end)
+  end)
 end)

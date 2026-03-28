@@ -273,4 +273,73 @@ describe("solomon.utils", function()
       assert.equals("    end", result[3])
     end)
   end)
+
+  describe("stop_timer", function()
+    it("stops and closes a running timer", function()
+      local timer = vim.uv.new_timer()
+      local called = false
+      timer:start(1000, 0, function() called = true end)
+
+      utils.stop_timer(timer)
+
+      assert.is_true(timer:is_closing())
+      -- Timer should not fire
+      vim.wait(50, function() return false end)
+      assert.is_false(called)
+    end)
+
+    it("handles nil timer gracefully", function()
+      assert.has_no_error(function()
+        utils.stop_timer(nil)
+      end)
+    end)
+  end)
+
+  describe("get_diagnostics_for_range", function()
+    it("returns nil when no diagnostics", function()
+      local buf = vim.api.nvim_create_buf(false, true)
+      local result = utils.get_diagnostics_for_range(buf, 1, 10)
+      assert.is_nil(result)
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    it("formats diagnostics as text", function()
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "line1", "line2", "line3" })
+
+      -- Set a diagnostic on line 2
+      vim.diagnostic.set(vim.api.nvim_create_namespace("test_diag"), buf, {
+        { lnum = 1, col = 0, message = "test error", severity = vim.diagnostic.severity.ERROR },
+      })
+
+      local result = utils.get_diagnostics_for_range(buf, 1, 3)
+      assert.is_string(result)
+      assert.truthy(result:find("test error", 1, true))
+      assert.truthy(result:find("error"))
+      assert.truthy(result:find("Line 2"))
+
+      vim.diagnostic.reset(nil, buf)
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    it("filters to line range", function()
+      local buf = vim.api.nvim_create_buf(false, true)
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "a", "b", "c", "d", "e" })
+
+      local ns = vim.api.nvim_create_namespace("test_diag2")
+      vim.diagnostic.set(ns, buf, {
+        { lnum = 0, col = 0, message = "line 1 issue", severity = vim.diagnostic.severity.WARN },
+        { lnum = 3, col = 0, message = "line 4 issue", severity = vim.diagnostic.severity.ERROR },
+      })
+
+      -- Only request lines 3-5, should only get the line 4 diagnostic
+      local result = utils.get_diagnostics_for_range(buf, 3, 5)
+      assert.is_string(result)
+      assert.truthy(result:find("line 4 issue", 1, true))
+      assert.is_falsy(result:find("line 1 issue", 1, true))
+
+      vim.diagnostic.reset(ns, buf)
+      vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+  end)
 end)
