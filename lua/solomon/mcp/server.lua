@@ -453,7 +453,7 @@ function M._flush_mention_queue()
     local mention = queue[idx]
     -- Discard mentions older than 5 seconds
     local age_ms = (now - mention.timestamp) / 1e6
-    if age_ms < 5000 then
+    if age_ms < 10000 then
       M.broadcast_notification("notifications/at_mentioned", {
         filePath = mention.filePath,
         lineStart = mention.lineStart,
