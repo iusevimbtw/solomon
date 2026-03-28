@@ -51,7 +51,8 @@ function M.build_opts()
   }
 end
 
---- Open the Claude Code terminal. If already open, focuses it.
+--- Open the Claude Code terminal. If any Claude terminal is already open, focuses it.
+--- If a different Claude session is running (e.g. --continue), closes it first.
 function M.open()
   local ok, snacks = pcall(require, "snacks")
   if not ok then
@@ -59,12 +60,21 @@ function M.open()
     return
   end
 
-  local terminal = snacks.terminal.get(M.build_cmd(), vim.tbl_extend("force", M.build_opts(), { create = false }))
-  if terminal and terminal:win_valid() then
-    terminal:focus()
-  else
-    snacks.terminal.open(M.build_cmd(), M.build_opts())
+  -- Check if any Claude terminal is already visible — focus it
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(win) then
+      local buf = vim.api.nvim_win_get_buf(win)
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name:find(":/usr/bin/claude") or name:find(":/usr/local/bin/claude") then
+        vim.api.nvim_set_current_win(win)
+        return
+      end
+    end
   end
+
+  -- No Claude terminal visible — close any hidden ones and open fresh
+  M.close_all()
+  snacks.terminal.open(M.build_cmd(), M.build_opts())
 end
 
 --- Format a selection as context text for display/testing.
@@ -123,6 +133,30 @@ function M.close()
   local terminal = snacks.terminal.get(M.build_cmd(), vim.tbl_extend("force", M.build_opts(), { create = false }))
   if terminal and terminal:win_valid() then
     terminal:hide()
+  end
+end
+
+--- Close all solomon-related terminals (base, continue, resume).
+--- Used before opening a new session to avoid stacking terminals.
+function M.close_all()
+  local ok, snacks = pcall(require, "snacks")
+  if not ok then
+    return
+  end
+
+  -- Close all snacks terminals by checking for solomon-related buffers
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_valid(buf) then
+      local name = vim.api.nvim_buf_get_name(buf)
+      if name:find(":/usr/bin/claude") or name:find(":/usr/local/bin/claude") then
+        -- Find the window displaying this buffer and close it
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.api.nvim_win_is_valid(win) and vim.api.nvim_win_get_buf(win) == buf then
+            pcall(vim.api.nvim_win_close, win, true)
+          end
+        end
+      end
+    end
   end
 end
 

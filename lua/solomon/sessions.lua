@@ -92,6 +92,7 @@ function M.resume(session_id)
   end
 
   local terminal = require("solomon.terminal")
+  terminal.close_all()
   local cmd = terminal.build_cmd({ "--resume", session_id })
   snacks.terminal.open(cmd, terminal.build_opts())
 end
@@ -112,6 +113,7 @@ function M.continue_last(selection)
   end
 
   local term = require("solomon.terminal")
+  term.close_all()
   local cmd = term.build_cmd({ "--continue" })
   snacks.terminal.open(cmd, term.build_opts())
 end
