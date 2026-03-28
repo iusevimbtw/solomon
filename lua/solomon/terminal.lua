@@ -1,10 +1,15 @@
 local M = {}
 
 --- Build the claude command with configured flags.
+---@param extra_args string[]|nil Additional CLI arguments
 ---@return string[]
-local function build_cmd()
+function M.build_cmd(extra_args)
   local config = require("solomon.config").options
   local cmd = { config.cli.cmd }
+
+  if extra_args then
+    vim.list_extend(cmd, extra_args)
+  end
 
   if config.cli.model then
     table.insert(cmd, "--model")
@@ -20,7 +25,7 @@ end
 
 --- Build snacks terminal options from solomon config.
 ---@return snacks.terminal.Opts
-local function build_opts()
+function M.build_opts()
   local config = require("solomon.config").options
   local tc = config.terminal
 
@@ -53,7 +58,7 @@ function M.toggle()
     vim.notify("[solomon] snacks.nvim is required for terminal support", vim.log.levels.ERROR)
     return
   end
-  snacks.terminal.toggle(build_cmd(), build_opts())
+  snacks.terminal.toggle(M.build_cmd(), M.build_opts())
 end
 
 --- Open the Claude Code terminal (without toggling).
@@ -64,11 +69,11 @@ function M.open()
     return
   end
 
-  local terminal = snacks.terminal.get(build_cmd(), vim.tbl_extend("force", build_opts(), { create = false }))
+  local terminal = snacks.terminal.get(M.build_cmd(), vim.tbl_extend("force", M.build_opts(), { create = false }))
   if terminal and terminal:win_valid() then
     terminal:focus()
   else
-    snacks.terminal.open(build_cmd(), build_opts())
+    snacks.terminal.open(M.build_cmd(), M.build_opts())
   end
 end
 
@@ -79,7 +84,7 @@ function M.close()
     return
   end
 
-  local terminal = snacks.terminal.get(build_cmd(), vim.tbl_extend("force", build_opts(), { create = false }))
+  local terminal = snacks.terminal.get(M.build_cmd(), vim.tbl_extend("force", M.build_opts(), { create = false }))
   if terminal and terminal:win_valid() then
     terminal:hide()
   end

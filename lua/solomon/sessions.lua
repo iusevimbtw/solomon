@@ -91,34 +91,9 @@ function M.resume(session_id)
     return
   end
 
-  local config = require("solomon.config").options
-  local cmd = { config.cli.cmd, "--resume", session_id }
-
-  if config.cli.model then
-    table.insert(cmd, "--model")
-    table.insert(cmd, config.cli.model)
-  end
-
-  local tc = config.terminal
-  ---@type snacks.win.Config
-  local win = {}
-  if tc.style == "float" then
-    win.position = "float"
-    win.width = tc.float_opts.width
-    win.height = tc.float_opts.height
-    win.border = tc.float_opts.border
-  else
-    win.position = tc.split_opts.position
-    win.width = tc.split_opts.size
-    win.height = tc.split_opts.size
-  end
-
-  snacks.terminal.open(cmd, {
-    win = win,
-    auto_close = tc.auto_close,
-    auto_insert = tc.auto_insert,
-    interactive = true,
-  })
+  local terminal = require("solomon.terminal")
+  local cmd = terminal.build_cmd({ "--resume", session_id })
+  snacks.terminal.open(cmd, terminal.build_opts())
 end
 
 --- Continue the most recent session in the terminal.
@@ -129,34 +104,9 @@ function M.continue_last()
     return
   end
 
-  local config = require("solomon.config").options
-  local cmd = { config.cli.cmd, "--continue" }
-
-  if config.cli.model then
-    table.insert(cmd, "--model")
-    table.insert(cmd, config.cli.model)
-  end
-
-  local tc = config.terminal
-  ---@type snacks.win.Config
-  local win = {}
-  if tc.style == "float" then
-    win.position = "float"
-    win.width = tc.float_opts.width
-    win.height = tc.float_opts.height
-    win.border = tc.float_opts.border
-  else
-    win.position = tc.split_opts.position
-    win.width = tc.split_opts.size
-    win.height = tc.split_opts.size
-  end
-
-  snacks.terminal.open(cmd, {
-    win = win,
-    auto_close = tc.auto_close,
-    auto_insert = tc.auto_insert,
-    interactive = true,
-  })
+  local terminal = require("solomon.terminal")
+  local cmd = terminal.build_cmd({ "--continue" })
+  snacks.terminal.open(cmd, terminal.build_opts())
 end
 
 --- Open the session picker using Snacks.picker.

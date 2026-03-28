@@ -38,7 +38,7 @@ local M = {}
 ---@type solomon.Config
 M.defaults = {
   terminal = {
-    style = "float",
+    style = "split",
     float_opts = {
       width = 0.8,
       height = 0.8,

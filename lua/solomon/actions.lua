@@ -103,7 +103,18 @@ function M._open_prompt(selection, action, source)
 					:gsub("{context}", context_str_full)
 				M._execute_inline(selection, action, source, full_prompt)
 			else
-				local full_prompt = user_prompt .. "\n\n" .. context_str
+				local utils = require("solomon.utils")
+				local surrounding = utils.get_surrounding_context(source.bufnr, source.start_line, source.end_line)
+				local context_str_full =
+					utils.format_context(selection.lines, selection.filetype, selection.filename, selection.start_line, surrounding)
+				local project_context = M._build_project_context()
+				local diagnostics = M._build_diagnostics_context(source)
+				local full_prompt = "You are a code assistant responding in a Neovim editor. "
+					.. "Answer the question below about the provided code. "
+					.. "If the question is asking for a change, provide the updated code in a single code block.\n\n"
+					.. diagnostics
+					.. project_context
+					.. "Question: " .. user_prompt .. "\n\n" .. context_str_full
 				M._send_to_claude(full_prompt, source)
 			end
 		end,
