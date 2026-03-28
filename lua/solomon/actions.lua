@@ -18,11 +18,6 @@ M.actions = {
 		show_input = false,
 		inline = true,
 	},
-	tests = {
-		name = "Generate Tests",
-		prompt_template = "Generate comprehensive tests for this code. Use the appropriate testing framework for the language. Follow the project conventions described below if provided. Put all test code in a single code block:\n\n{project_context}{context}",
-		show_input = false,
-	},
 	task = {
 		name = "Task",
 		prompt_template = "{user_prompt}\n\nFollow the project conventions if provided. Respond with ONLY the updated code inside a single code block. No explanation before or after the code block.\n\n{project_context}{context}",
@@ -461,10 +456,6 @@ end
 
 function M.task()
 	M.run("task")
-end
-
-function M.tests()
-	M.run("tests")
 end
 
 return M

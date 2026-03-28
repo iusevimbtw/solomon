@@ -17,7 +17,6 @@
 ---@field explain string Keymap for explain action
 ---@field improve string Keymap for improve action (refactor + fix + optimize)
 ---@field task string Keymap for task action (prompt + inline replace)
----@field tests string Keymap for generate tests action
 ---@field sessions string Keymap for session picker
 ---@field continue_session string Keymap for continue last session
 ---@field review string Keymap for git diff review
@@ -57,7 +56,6 @@ M.defaults = {
     explain = "<leader>ae",
     improve = "<leader>ai",
     task = "<leader>ad",
-    tests = "<leader>at",
     sessions = "<leader>as",
     continue_session = "<leader>ac",
     review = "<leader>aR",
