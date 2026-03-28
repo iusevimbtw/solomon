@@ -50,12 +50,12 @@ function M.register_commands()
 			else
 				vim.notify("[solomon] MCP server not running", vim.log.levels.INFO)
 			end
-		elseif subcmd == "review" then
+		elseif subcmd == "diff" then
 			local staged = args[2] == "staged"
 			require("solomon.git").review({ staged = staged })
-		elseif subcmd == "review-staged" then
+		elseif subcmd == "diff-staged" then
 			require("solomon.git").review({ staged = true })
-		elseif subcmd == "review-hunk" then
+		elseif subcmd == "diff-hunk" then
 			require("solomon.git").review_hunk()
 		elseif subcmd == "commit" then
 			require("solomon.git").commit()
@@ -85,9 +85,9 @@ function M.register_commands()
 				"toggle",
 				"open",
 				"close",
-				"review",
-				"review-staged",
-				"review-hunk",
+				"diff",
+				"diff-staged",
+				"diff-hunk",
 				"commit",
 				"blame",
 				"sessions",
@@ -140,9 +140,9 @@ function M.register_keymaps()
 		require("solomon.sessions").continue_last()
 	end, "Continue last session")
 
-	map("n", km.review, function()
+	map("n", km.diff, function()
 		require("solomon.git").review()
-	end, "Review git diff")
+	end, "Git diff review")
 
 	map("n", km.commit, function()
 		require("solomon.git").commit()
@@ -164,7 +164,7 @@ function M.register_keymaps()
 			{ km.task, icon = "📝", mode = { "n", "v" } },
 			{ km.sessions, icon = "📋" },
 			{ km.continue_session, icon = "▶️" },
-			{ km.review, icon = "󰊢" },
+			{ km.diff, icon = "󰊢" },
 			{ km.commit, icon = "󰜘" },
 			{ km.blame, icon = "󰋽", mode = { "n", "v" } },
 		})
