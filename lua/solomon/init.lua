@@ -72,6 +72,8 @@ function M.register_commands()
 			else
 				vim.notify("[solomon] MCP server not running", vim.log.levels.INFO)
 			end
+		elseif subcmd == "review" then
+			require("solomon.review").start()
 		elseif subcmd == "diff" then
 			local staged = args[2] == "staged"
 			require("solomon.git").review({ staged = staged })
@@ -109,6 +111,7 @@ function M.register_commands()
 				"open",
 				"close",
 				"focus",
+				"review",
 				"diff",
 				"diff-staged",
 				"diff-hunk",
@@ -183,6 +186,10 @@ function M.register_keymaps()
 		require("solomon.sessions").continue_last(selection)
 	end, "Continue session (with selection)")
 
+	map("n", km.review, function()
+		require("solomon.review").start()
+	end, "Interactive diff review")
+
 	map("n", km.diff, function()
 		require("solomon.git").review()
 	end, "Git diff review")
@@ -210,6 +217,7 @@ function M.register_keymaps()
 			{ km.task, icon = "📝", mode = { "n", "v" } },
 			{ km.sessions, icon = "📋" },
 			{ km.continue_session, icon = "▶️" },
+			{ km.review, icon = "👁" },
 			{ km.diff, icon = "󰊢" },
 			{ km.commit, icon = "󰜘" },
 			{ km.blame, icon = "󰋽", mode = { "n", "v" } },

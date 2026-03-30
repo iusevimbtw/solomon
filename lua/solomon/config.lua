@@ -22,6 +22,7 @@
 ---@field task string Keymap for task action (prompt + inline replace)
 ---@field sessions string Keymap for session picker
 ---@field continue_session string Keymap for continue last session
+---@field review string Keymap for interactive diff review mode
 ---@field diff string Keymap for git diff review
 ---@field commit string Keymap for generate commit message
 ---@field blame string Keymap for explain git blame
@@ -64,6 +65,7 @@ M.defaults = {
     task = "<leader>at",
     sessions = "<leader>as",
     continue_session = "<leader>ac",
+    review = "<leader>aR",
     diff = "<leader>ad",
     commit = "<leader>am",
     blame = "<leader>ab",
