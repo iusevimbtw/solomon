@@ -61,6 +61,7 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 |-----|------|----------|
 | `<leader>an` | normal | Open new Claude Code terminal (closes existing) |
 | `<leader>af` | normal | Focus existing Claude Code terminal |
+| `<leader>aq` | normal | Close Claude Code terminal |
 | `<leader>aa` | normal/visual | Send context to Claude via MCP @mention |
 | `<leader>ac` | normal/visual | Continue last session (closes existing terminal) |
 | `<leader>as` | normal | Browse sessions (snacks picker) |

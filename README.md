@@ -70,6 +70,7 @@ require("solomon").setup({
     send = "<leader>aa",
     toggle = "<leader>an",
     focus = "<leader>af",
+    close = "<leader>aq",
     ask = "<leader>ak",
     explain = "<leader>ae",
     improve = "<leader>ai",
@@ -111,6 +112,7 @@ All code actions work in both normal mode (treesitter selects enclosing function
 |-----|--------|
 | `<leader>an` | Open new Claude Code terminal |
 | `<leader>af` | Focus existing Claude Code terminal |
+| `<leader>aq` | Close Claude Code terminal |
 | `<leader>aa` | Send selection/file/neo-tree file to Claude as @mention |
 | `<leader>ac` | Continue last session |
 | `<leader>as` | Browse sessions |

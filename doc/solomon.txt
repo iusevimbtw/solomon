@@ -100,6 +100,7 @@ Call `require("solomon").setup(opts)` with any of these options:
       send = "<leader>aa",
       toggle = "<leader>an",
       focus = "<leader>af",
+      close = "<leader>aq",
       ask = "<leader>ak",
       explain = "<leader>ae",
       improve = "<leader>ai",
@@ -174,6 +175,7 @@ Code actions:~
 Terminal & context:~
   `<leader>an`   Open new Claude Code terminal
   `<leader>af`   Focus existing Claude Code terminal
+  `<leader>aq`   Close Claude Code terminal
   `<leader>aa`   Send selection/file/neo-tree file to Claude as @mention
   `<leader>ac`   Continue last session
   `<leader>as`   Browse sessions
