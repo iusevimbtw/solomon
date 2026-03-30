@@ -93,6 +93,10 @@ function M.start()
       -- Clean up per-client state
       if M.instance then
         M.instance.clients[client.id] = nil
+        -- Stop refresh if no clients remain
+        if not M.is_client_connected() then
+          pcall(function() require("solomon.refresh").stop() end)
+        end
       end
       M._log("INFO", "Client disconnected: " .. client.id)
     end,
@@ -128,8 +132,9 @@ function M.stop()
     return
   end
 
-  -- Stop heartbeat
+  -- Stop heartbeat and file refresh
   M._stop_heartbeat()
+  pcall(function() require("solomon.refresh").stop() end)
 
   -- Send close notification to all clients before shutting down
   if M.instance.ws then
@@ -253,6 +258,11 @@ function M._handle_initialized(client)
       M._flush_mention_queue()
     end, 600)
   end
+
+  -- Start auto-refresh so buffers reload when Claude edits files
+  pcall(function()
+    require("solomon.refresh").start()
+  end)
 end
 
 --- Handle notifications/cancelled — client cancels an in-flight request.

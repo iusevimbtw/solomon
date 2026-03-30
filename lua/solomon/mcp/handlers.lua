@@ -289,13 +289,44 @@ function M.handle_open_diff(args)
     vim.keymap.set("n", "q", function() vim.cmd.tabclose() end, { buffer = buf })
     vim.keymap.set("n", "<CR>", function()
       -- Find the source buffer and apply
+      local source_buf = nil
       for _, b in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_get_name(b) == args.filePath then
+          source_buf = b
           vim.api.nvim_buf_set_lines(b, 0, -1, false, new_lines)
           break
         end
       end
+
+      -- Find first changed line
+      local first_diff = 1
+      for i = 1, math.max(#old_lines, #new_lines) do
+        if old_lines[i] ~= new_lines[i] then
+          first_diff = i
+          break
+        end
+      end
+
+      -- Close diff tab
       vim.cmd.tabclose()
+
+      -- Jump to the source file at the first changed line
+      if source_buf then
+        -- Find a non-terminal window to show the file
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.api.nvim_win_is_valid(win) then
+            local wbuf = vim.api.nvim_win_get_buf(win)
+            local name = vim.api.nvim_buf_get_name(wbuf)
+            if not name:find("^term://") and not name:find("^solomon://") then
+              vim.api.nvim_set_current_win(win)
+              vim.api.nvim_win_set_buf(win, source_buf)
+              pcall(vim.api.nvim_win_set_cursor, win, { first_diff, 0 })
+              vim.cmd("normal! zz") -- center the changed line
+              break
+            end
+          end
+        end
+      end
     end, { buffer = buf })
   end
 
