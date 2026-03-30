@@ -179,37 +179,27 @@ function M.handle_get_open_editors()
 end
 
 --- Get the current selection or cursor context.
+--- Uses tracked selection from selection.lua if available.
 function M.handle_get_current_selection()
-  local buf = vim.api.nvim_get_current_buf()
-  local filepath = vim.api.nvim_buf_get_name(buf)
-  local cursor = vim.api.nvim_win_get_cursor(0)
-
-  -- Try to get visual selection marks
-  local start_pos = vim.fn.getpos("'<")
-  local end_pos = vim.fn.getpos("'>")
-  local start_line = start_pos[2]
-  local end_line = end_pos[2]
-
-  if start_line > 0 and end_line > 0 and start_line <= end_line then
-    local lines = vim.api.nvim_buf_get_lines(buf, start_line - 1, end_line, false)
-    return {
-      filePath = filepath,
-      text = table.concat(lines, "\n"),
-      selection = {
-        start = { line = start_line - 1, character = 0 },
-        ["end"] = { line = end_line - 1, character = #(lines[#lines] or "") },
-      },
-    }
+  local ok, sel_mod = pcall(require, "solomon.selection")
+  if ok then
+    local tracked = sel_mod.get_latest()
+    if tracked then
+      return tracked
+    end
   end
 
-  -- No selection — return cursor line
-  local line = vim.api.nvim_buf_get_lines(buf, cursor[1] - 1, cursor[1], false)[1] or ""
+  -- Fallback: return cursor position
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local filepath = vim.api.nvim_buf_get_name(0)
   return {
+    text = "",
     filePath = filepath,
-    text = line,
+    fileUrl = "file://" .. filepath,
     selection = {
       start = { line = cursor[1] - 1, character = cursor[2] },
       ["end"] = { line = cursor[1] - 1, character = cursor[2] },
+      isEmpty = true,
     },
   }
 end
