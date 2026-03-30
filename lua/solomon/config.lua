@@ -15,6 +15,7 @@
 ---@field send string Keymap for smart send (selection/file/neo-tree)
 ---@field toggle string Keymap to open new terminal
 ---@field focus string Keymap to focus existing terminal
+---@field close string Keymap to close Claude terminal
 ---@field ask string Keymap for free-form ask (visual)
 ---@field explain string Keymap for explain action
 ---@field improve string Keymap for improve action (refactor + fix + optimize)
@@ -56,6 +57,7 @@ M.defaults = {
     send = "<leader>aa",
     toggle = "<leader>an",
     focus = "<leader>af",
+    close = "<leader>aq",
     ask = "<leader>ak",
     explain = "<leader>ae",
     improve = "<leader>ai",

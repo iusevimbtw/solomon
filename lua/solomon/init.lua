@@ -149,6 +149,10 @@ function M.register_keymaps()
 		require("solomon.terminal").focus()
 	end, "Focus Claude Code")
 
+	map("n", km.close, function()
+		require("solomon.terminal").close_all()
+	end, "Close Claude Code")
+
 	map({ "n", "v" }, km.ask, function()
 		require("solomon.actions").ask()
 	end, "Ask Claude")
@@ -199,6 +203,7 @@ function M.register_keymaps()
 			{ km.send, icon = "📎", mode = { "n", "v" } },
 			{ km.toggle, icon = "󰄛" },
 			{ km.focus, icon = "🎯" },
+			{ km.close, icon = "❌" },
 			{ km.ask, icon = "❓", mode = { "n", "v" } },
 			{ km.explain, icon = "🧠", mode = { "n", "v" } },
 			{ km.improve, icon = "✨", mode = { "n", "v" } },
