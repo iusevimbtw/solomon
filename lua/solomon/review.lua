@@ -42,7 +42,7 @@ function M._parse_hunks(diff_text)
 
     -- Track file header
     if line:match("^diff %-%-git") then
-      current_file = line:match("^diff %-%-git a/(.-) b/")
+      current_file = line:match("^diff %-%-git %w/(.-) %w/")
       current_header_lines = { line }
     elseif line:match("^index ") or line:match("^%-%-%- ") or line:match("^%+%+%+ ") then
       table.insert(current_header_lines, line)
@@ -128,15 +128,34 @@ function M._extract_content(hunk)
 end
 
 --- Start interactive review mode.
+--- Checks unstaged changes, then staged changes, then unpushed commits.
 function M.start()
   if M._state then
     M.quit()
   end
 
-  -- Get unstaged diff
+  -- Try unstaged changes first
   local diff = vim.fn.system({ "git", "diff", "-U3", "--no-color" })
-  if vim.v.shell_error ~= 0 or not diff or diff == "" then
-    vim.notify("[solomon] No unstaged changes to review", vim.log.levels.INFO)
+  local source = "unstaged"
+
+  -- If no unstaged, try staged
+  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+    diff = vim.fn.system({ "git", "diff", "--staged", "-U3", "--no-color" })
+    source = "staged"
+  end
+
+  -- If no staged, try unpushed commits vs remote
+  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+    -- Find the upstream branch
+    local upstream = vim.trim(vim.fn.system({ "git", "rev-parse", "--abbrev-ref", "@{u}" }))
+    if vim.v.shell_error == 0 and upstream ~= "" then
+      diff = vim.fn.system({ "git", "diff", upstream .. "..HEAD", "-U3", "--no-color" })
+      source = "unpushed"
+    end
+  end
+
+  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+    vim.notify("[solomon] No changes to review (checked unstaged, staged, and unpushed)", vim.log.levels.INFO)
     return
   end
 
@@ -146,9 +165,12 @@ function M.start()
     return
   end
 
+  vim.notify(string.format("[solomon] Reviewing %d %s hunks", #hunks, source), vim.log.levels.INFO)
+
   M._state = {
     hunks = hunks,
     current = 1,
+    source = source,
     orig_buf = nil,
     new_buf = nil,
     orig_win = nil,
@@ -235,8 +257,8 @@ function M._show_info_bar(hunk)
   local total = #M._state.hunks
   local current = M._state.current
   local info_text = string.format(
-    " %s [%d/%d]  a: accept | x: reject | ?: ask | n: next | p: prev | q: quit ",
-    hunk.file, current, total
+    " %s [%d/%d] (%s)  a: accept | x: reject | ?: ask | n: next | p: prev | q: quit ",
+    hunk.file, current, total, M._state.source
   )
 
   local buf = vim.api.nvim_create_buf(false, true)
@@ -303,7 +325,8 @@ function M._close_diff_ui()
   M._state.new_win = nil
 end
 
---- Accept (stage) the current hunk.
+--- Accept the current hunk.
+--- Unstaged: stages the hunk. Staged/unpushed: keeps as-is (already committed/staged).
 function M.accept()
   if not M._state then
     return
@@ -314,15 +337,22 @@ function M.accept()
     return
   end
 
-  -- Stage the hunk using git apply --cached
-  local result = vim.fn.system({ "git", "apply", "--cached", "-" }, hunk.patch)
-  if vim.v.shell_error ~= 0 then
-    vim.notify("[solomon] Failed to stage hunk: " .. vim.trim(result), vim.log.levels.ERROR)
-    return
+  local source = M._state.source
+  local action_desc = "Accepted"
+
+  if source == "unstaged" then
+    -- Stage the hunk
+    local result = vim.fn.system({ "git", "apply", "--cached", "-" }, hunk.patch)
+    if vim.v.shell_error ~= 0 then
+      vim.notify("[solomon] Failed to stage hunk: " .. vim.trim(result), vim.log.levels.ERROR)
+      return
+    end
+    action_desc = "Staged"
   end
+  -- For staged and unpushed: accept = keep as-is, just move on
 
   vim.notify(
-    string.format("[solomon] Staged hunk %d/%d (%s)", M._state.current, #M._state.hunks, hunk.file),
+    string.format("[solomon] %s hunk %d/%d (%s)", action_desc, M._state.current, #M._state.hunks, hunk.file),
     vim.log.levels.INFO
   )
 
@@ -330,6 +360,7 @@ function M.accept()
 end
 
 --- Reject (revert) the current hunk.
+--- Unstaged: reverts via git apply -R. Staged: unstages. Unpushed: reverts in working tree.
 function M.reject()
   if not M._state then
     return
@@ -340,10 +371,21 @@ function M.reject()
     return
   end
 
-  -- Revert the hunk using git apply -R
-  local result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
+  local source = M._state.source
+  local result
+
+  if source == "unstaged" then
+    result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
+  elseif source == "staged" then
+    -- Unstage the hunk (remove from index)
+    result = vim.fn.system({ "git", "apply", "--cached", "-R", "-" }, hunk.patch)
+  elseif source == "unpushed" then
+    -- Revert in working tree
+    result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
+  end
+
   if vim.v.shell_error ~= 0 then
-    vim.notify("[solomon] Failed to revert hunk: " .. vim.trim(result), vim.log.levels.ERROR)
+    vim.notify("[solomon] Failed to revert hunk: " .. vim.trim(result or ""), vim.log.levels.ERROR)
     return
   end
 

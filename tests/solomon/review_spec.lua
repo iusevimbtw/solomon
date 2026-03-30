@@ -109,6 +109,23 @@ describe("solomon.review", function()
       assert.equals(1, hunks[1].old_count)
       assert.equals(1, hunks[1].new_count)
     end)
+
+    it("handles mnemonic prefixes (i/ w/ instead of a/ b/)", function()
+      local diff = table.concat({
+        "diff --git i/test.lua w/test.lua",
+        "index abc..def 100644",
+        "--- i/test.lua",
+        "+++ w/test.lua",
+        "@@ -1,2 +1,2 @@",
+        "-old",
+        "+new",
+        " ctx",
+      }, "\n")
+
+      local hunks = review._parse_hunks(diff)
+      assert.equals(1, #hunks)
+      assert.equals("test.lua", hunks[1].file)
+    end)
   end)
 
   describe("_extract_content", function()
