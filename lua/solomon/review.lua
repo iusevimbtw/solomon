@@ -231,11 +231,11 @@ function M._show_current_hunk()
 
   -- Set keymaps on both buffers
   local keymaps = {
-    { "a", M.accept, "Accept (stage hunk)" },
-    { "x", M.reject, "Reject (revert hunk)" },
-    { "?", M.ask, "Ask Claude about this hunk" },
-    { "n", M.next_hunk, "Next hunk" },
-    { "p", M.prev_hunk, "Previous hunk" },
+    { "y", M.accept, "Yes (accept hunk)" },
+    { "n", M.reject, "No (reject hunk)" },
+    { "e", M.explain, "Explain this hunk" },
+    { "a", M.ask, "Ask Claude about this hunk" },
+    { "s", M.next_hunk, "Skip to next hunk" },
     { "q", M.quit, "Quit review" },
   }
 
@@ -257,7 +257,7 @@ function M._show_info_bar(hunk)
   local total = #M._state.hunks
   local current = M._state.current
   local info_text = string.format(
-    " %s [%d/%d] (%s)  a: accept | x: reject | ?: ask | n: next | p: prev | q: quit ",
+    " %s [%d/%d] (%s)  y: accept | n: reject | e: explain | a: ask | s: skip | q: quit ",
     hunk.file, current, total, M._state.source
   )
 
@@ -397,7 +397,26 @@ function M.reject()
   M._advance()
 end
 
---- Ask Claude about the current hunk.
+--- Explain the current hunk — sends directly to Claude, shows response popup.
+function M.explain()
+  if not M._state then
+    return
+  end
+
+  local hunk = M._state.hunks[M._state.current]
+  if not hunk then
+    return
+  end
+
+  local diff_text = hunk.header .. "\n" .. table.concat(hunk.diff_lines, "\n")
+  local prompt = "Explain this code change. What does it do and why?\n\n"
+    .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
+
+  M._close_diff_ui()
+  require("solomon.actions")._send_to_claude(prompt, nil, { keymaps = {} })
+end
+
+--- Ask Claude about the current hunk — opens prompt window with diff as context.
 function M.ask()
   if not M._state then
     return
@@ -408,19 +427,27 @@ function M.ask()
     return
   end
 
-  -- Build the diff text for the prompt
-  local diff_text = hunk.header .. "\n" .. table.concat(hunk.diff_lines, "\n")
-  local prompt = "Explain this code change. What does it do and why?\n\n"
-    .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
+  local diff_lines = { hunk.header }
+  vim.list_extend(diff_lines, hunk.diff_lines)
 
-  -- Close the diff UI temporarily to show the response
   M._close_diff_ui()
 
-  -- Send to Claude via the response popup
-  require("solomon.actions")._send_to_claude(prompt, nil)
-
-  -- Note: after user closes the response window, they can press <leader>aR
-  -- to re-enter review mode (it will re-parse the diff from the current state)
+  local prompt_mod = require("solomon.prompt")
+  prompt_mod.open({
+    context_lines = diff_lines,
+    filetype = "diff",
+    filename = hunk.file,
+    start_line = hunk.new_start,
+    on_submit = function(user_prompt)
+      local diff_text = hunk.header .. "\n" .. table.concat(hunk.diff_lines, "\n")
+      local full_prompt = "You are a code assistant responding in a Neovim editor. "
+        .. "Answer the question below about this code change. "
+        .. "If the question is asking for a modification, provide the updated code in a single code block.\n\n"
+        .. "Question: " .. user_prompt .. "\n\n"
+        .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
+      require("solomon.actions")._send_to_claude(full_prompt, nil, { keymaps = {} })
+    end,
+  })
 end
 
 --- Move to the next hunk.

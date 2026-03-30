@@ -362,11 +362,12 @@ end
 --- Send a prompt to Claude and display the streaming response.
 ---@param prompt string
 ---@param source table|nil Source buffer info for apply
-function M._send_to_claude(prompt, source)
+---@param opts table|nil Options passed to response.open (e.g. {keymaps = {...}})
+function M._send_to_claude(prompt, source, opts)
 	local streaming = require("solomon.streaming")
 	local response = require("solomon.response")
 
-	local win = response.open(source)
+	local win = response.open(source, opts)
 	response.set_status("Solomon (streaming...)")
 
 	-- Progress notification (noice.nvim will render this as a spinner)

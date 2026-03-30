@@ -19,13 +19,28 @@ M.current = nil
 
 --- Create and show the response window.
 ---@param source solomon.SourceInfo|nil
+---@param opts {keymaps: table[]|nil}|nil Custom keymaps: list of {key, fn, desc}
 ---@return solomon.ResponseWindow
-function M.open(source)
+function M.open(source, opts)
+  opts = opts or {}
+
   if M.current then
     M.close()
   end
 
-  local bottom_hints = " q/esc: close | a: apply | y: yank | d: diff "
+  -- Build bottom hints from keymaps
+  local bottom_hints
+  if opts.keymaps then
+    local parts = { "q/esc: close" }
+    for _, km in ipairs(opts.keymaps) do
+      table.insert(parts, km[1] .. ": " .. (km[3] or ""))
+    end
+    bottom_hints = " " .. table.concat(parts, " | ") .. " "
+  elseif source then
+    bottom_hints = " q/esc: close | a: apply | y: yank | d: diff "
+  else
+    bottom_hints = " q/esc: close "
+  end
 
   local Popup = require("nui.popup")
   local popup = Popup({
@@ -120,7 +135,7 @@ function M.open(source)
     pcall(render_spinner)
   end))
 
-  -- Keymaps
+  -- Always register close keymaps
   popup:map("n", "q", function()
     M.close()
   end, { noremap = true, silent = true })
@@ -129,18 +144,24 @@ function M.open(source)
     M.close()
   end, { noremap = true, silent = true })
 
-  -- ga: apply code block — replace original selection
-  popup:map("n", "a", function()
-    M.apply_code_block()
-  end, { noremap = true, silent = true })
+  -- Register custom keymaps if provided, otherwise defaults
+  if opts.keymaps then
+    for _, km in ipairs(opts.keymaps) do
+      popup:map("n", km[1], km[2], { noremap = true, silent = true, desc = km[3] })
+    end
+  elseif source then
+    popup:map("n", "a", function()
+      M.apply_code_block()
+    end, { noremap = true, silent = true })
 
-  popup:map("n", "y", function()
-    M.yank_code_block()
-  end, { noremap = true, silent = true })
+    popup:map("n", "y", function()
+      M.yank_code_block()
+    end, { noremap = true, silent = true })
 
-  popup:map("n", "d", function()
-    M.diff_code_block()
-  end, { noremap = true, silent = true })
+    popup:map("n", "d", function()
+      M.diff_code_block()
+    end, { noremap = true, silent = true })
+  end
 
   return win
 end
