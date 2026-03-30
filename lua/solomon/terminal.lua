@@ -16,6 +16,24 @@ function M.build_cmd(extra_args)
     table.insert(cmd, config.cli.model)
   end
 
+  -- Tell Claude about the MCP editor tools (built dynamically from handler definitions)
+  local tool_summary = ""
+  pcall(function()
+    local tools = require("solomon.mcp.handlers").get_tool_definitions()
+    local parts = {}
+    for _, tool in ipairs(tools) do
+      table.insert(parts, tool.name .. " (" .. tool.description .. ")")
+    end
+    tool_summary = table.concat(parts, ", ")
+  end)
+
+  if tool_summary ~= "" then
+    table.insert(cmd, "--append-system-prompt")
+    table.insert(cmd, "You are running inside Neovim with an MCP server providing editor tools. "
+      .. "If you cannot fulfill a request with your built-in tools, use the MCP tools proactively: "
+      .. tool_summary)
+  end
+
   for _, arg in ipairs(config.cli.args) do
     table.insert(cmd, arg)
   end
