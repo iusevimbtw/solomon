@@ -199,7 +199,7 @@ Checks in order: unstaged changes, staged changes, unpushed commits.
 Review keymaps:~
   `y`   Accept (stage hunk)
   `n`   Reject (revert hunk)
-  `e`   Edit (open file at hunk location, exit review)
+  `o`   Open file at hunk location (exit review)
   `k`   Ask Claude about this hunk (opens prompt)
   `s`   Skip to next hunk
   `q`   Quit review
