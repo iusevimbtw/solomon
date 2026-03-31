@@ -493,8 +493,6 @@ function M.ask()
   local diff_lines = { hunk.header }
   vim.list_extend(diff_lines, hunk.diff_lines)
 
-  M._close_diff_ui()
-
   local prompt_mod = require("solomon.prompt")
   prompt_mod.open({
     context_lines = diff_lines,
@@ -502,6 +500,7 @@ function M.ask()
     filename = hunk.file,
     start_line = hunk.new_start,
     on_submit = function(user_prompt)
+      M._close_diff_ui()
       local diff_text = hunk.header .. "\n" .. table.concat(hunk.diff_lines, "\n")
       local full_prompt = "You are a code assistant responding in a Neovim editor. "
         .. "Answer the question below about this code change. "
@@ -509,6 +508,12 @@ function M.ask()
         .. "Question: " .. user_prompt .. "\n\n"
         .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
       require("solomon.actions")._send_to_claude(full_prompt, nil, { keymaps = {} })
+    end,
+    on_cancel = function()
+      -- Return to the review hunk
+      if M._state then
+        M._show_current_hunk()
+      end
     end,
   })
 end

@@ -9,6 +9,7 @@ local M = {}
 ---@field filename string Source filename
 ---@field start_line integer|nil Starting line number
 ---@field on_submit fun(prompt: string) Called when user submits
+---@field on_cancel fun()|nil Called when user cancels (Esc/q)
 
 --- Open the prompt window with code context and input area.
 ---@param opts solomon.PromptOpts
@@ -137,6 +138,9 @@ function M.open(opts)
 
   local function close()
     layout:unmount()
+    if opts.on_cancel then
+      opts.on_cancel()
+    end
   end
 
   -- Input pane keymaps
