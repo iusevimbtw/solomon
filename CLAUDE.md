@@ -68,7 +68,7 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 | `<leader>aa` | normal/visual | Send context to Claude via MCP @mention |
 | `<leader>ac` | normal/visual | Continue last session (closes existing terminal) |
 | `<leader>as` | normal | Browse project sessions (snacks picker) |
-| `<leader>aR` | normal | Interactive diff review mode |
+| `<leader>ar` | normal | Interactive diff review mode |
 
 ### Review mode keybinds
 

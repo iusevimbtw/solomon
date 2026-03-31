@@ -72,7 +72,7 @@ require("solomon").setup({
     explain = "<leader>ae",
     improve = "<leader>ai",
     task = "<leader>at",
-    review = "<leader>aR",
+    review = "<leader>ar",
     sessions = "<leader>as",
     continue_session = "<leader>ac",
     diff = "<leader>ad",
@@ -119,7 +119,7 @@ All code actions work in both normal mode (treesitter selects enclosing function
 
 | Key | Action |
 |-----|--------|
-| `<leader>aR` | Interactive diff review (hunk-by-hunk) |
+| `<leader>ar` | Interactive diff review (hunk-by-hunk) |
 | `<leader>ad` | Git diff review |
 | `<leader>am` | Generate commit message |
 | `<leader>ab` | Explain git blame |

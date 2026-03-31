@@ -95,7 +95,7 @@ With lazy.nvim:~
       explain = "<leader>ae",
       improve = "<leader>ai",
       task = "<leader>at",
-      review = "<leader>aR",
+      review = "<leader>ar",
       sessions = "<leader>as",
       continue_session = "<leader>ac",
       diff = "<leader>ad",
@@ -164,7 +164,7 @@ Terminal & context:~
   `<leader>as`   Browse project sessions
 
 Git & review:~
-  `<leader>aR`   Interactive diff review (hunk-by-hunk)
+  `<leader>ar`   Interactive diff review (hunk-by-hunk)
   `<leader>ad`   Git diff review
   `<leader>am`   Generate commit message
   `<leader>ab`   Explain git blame
@@ -191,7 +191,7 @@ All actions auto-include surrounding context, CLAUDE.md, and LSP diagnostics.
 ==============================================================================
 8. REVIEW MODE                                               *solomon-review*
 
-Interactive hunk-by-hunk review of git changes. Trigger with `<leader>aR`
+Interactive hunk-by-hunk review of git changes. Trigger with `<leader>ar`
 or `:Solomon review`.
 
 Checks in order: unstaged changes, staged changes, unpushed commits.
