@@ -10,9 +10,12 @@ Claude Code integration for Neovim. A hybrid architecture combining terminal emb
 - **Streaming Responses** — Real-time streaming display with markdown highlighting
 - **Code Apply** — Apply code blocks from responses directly into your source buffer
 - **MCP Server** — WebSocket server with permessage-deflate compression for full IDE integration
+- **Selection Tracking** — Live cursor/visual selection broadcast to Claude via MCP
 - **Context Sending** — Send files/selections to Claude as @mentions via MCP
-- **Session Management** — Browse, resume, and continue Claude Code conversations with a picker
+- **Interactive Review** — Hunk-by-hunk diff review with accept/reject/ask Claude
+- **Session Management** — Browse, resume, and continue Claude Code conversations
 - **Git Integration** — Diff review, commit message generation, blame explanation
+- **Auto-Refresh** — Buffers reload automatically when Claude edits files, with diff highlights
 - **Statusline** — Lualine component showing MCP status, model, and cost
 - **Context Aware** — Auto-includes surrounding code, CLAUDE.md conventions, and LSP diagnostics
 
@@ -42,12 +45,6 @@ Optional: [snacks.nvim](https://github.com/folke/snacks.nvim), [lualine.nvim](ht
 }
 ```
 
-### Local development
-
-```lua
-{ dir = "/path/to/solomon", opts = {} }
-```
-
 ## Configuration
 
 ```lua
@@ -75,6 +72,7 @@ require("solomon").setup({
     explain = "<leader>ae",
     improve = "<leader>ai",
     task = "<leader>at",
+    review = "<leader>aR",
     sessions = "<leader>as",
     continue_session = "<leader>ac",
     diff = "<leader>ad",
@@ -83,7 +81,7 @@ require("solomon").setup({
   },
   cli = {
     cmd = "claude",
-    model = nil,             -- "opus", "sonnet", etc.
+    model = nil,
     args = {},
   },
   mcp = {
@@ -115,12 +113,13 @@ All code actions work in both normal mode (treesitter selects enclosing function
 | `<leader>aq` | Close Claude Code terminal |
 | `<leader>aa` | Send selection/file/neo-tree file to Claude as @mention |
 | `<leader>ac` | Continue last session |
-| `<leader>as` | Browse sessions |
+| `<leader>as` | Browse project sessions |
 
-### Git
+### Git & review
 
 | Key | Action |
 |-----|--------|
+| `<leader>aR` | Interactive diff review (hunk-by-hunk) |
 | `<leader>ad` | Git diff review |
 | `<leader>am` | Generate commit message |
 | `<leader>ab` | Explain git blame |
@@ -129,10 +128,21 @@ All code actions work in both normal mode (treesitter selects enclosing function
 
 | Key | Action |
 |-----|--------|
-| `a` | Apply code block to source |
-| `y` | Yank code block to clipboard |
-| `d` | Open diff view vs original |
-| `q`/`<Esc>` | Cancel and close |
+| `a` | Apply code block to source (when applicable) |
+| `y` | Yank code block to clipboard (when applicable) |
+| `d` | Open diff view vs original (when applicable) |
+| `q`/`<Esc>` | Close |
+
+### Review mode
+
+| Key | Action |
+|-----|--------|
+| `y` | Accept (stage hunk) |
+| `n` | Reject (revert hunk) |
+| `e` | Edit (open file at hunk) |
+| `a` | Ask Claude about hunk |
+| `s` | Skip to next |
+| `q` | Quit review |
 
 ## Commands
 
@@ -142,13 +152,13 @@ All code actions work in both normal mode (treesitter selects enclosing function
 :Solomon focus            " Focus existing terminal
 :Solomon close            " Close terminal
 :Solomon send             " Send context to Claude
+:Solomon review           " Interactive diff review
 :Solomon diff             " Review unstaged changes
 :Solomon diff-staged      " Review staged changes
 :Solomon diff-hunk        " Review current hunk
 :Solomon commit           " Generate commit message
 :Solomon blame            " Explain git blame
-:Solomon sessions         " Browse all sessions
-:Solomon sessions-project " Browse project sessions
+:Solomon sessions         " Browse project sessions
 :Solomon continue         " Continue last session
 :Solomon resume [id]      " Resume specific session
 :Solomon mcp-start        " Start MCP server
@@ -159,8 +169,6 @@ All code actions work in both normal mode (treesitter selects enclosing function
 
 ## Statusline
 
-Add to your lualine config:
-
 ```lua
 lualine_x = {
   require("solomon.statusline").lualine(),
@@ -169,14 +177,13 @@ lualine_x = {
 
 ## MCP Server
 
-Solomon runs a WebSocket MCP server with permessage-deflate compression that Claude Code discovers automatically via a lock file. Claude can:
+Solomon runs a WebSocket MCP server with permessage-deflate compression that Claude Code discovers automatically via a lock file. Features:
 
-- Read your open buffers and get diagnostics
-- Open files, propose diffs, save documents
-- Get current selection and workspace folders
-- Receive @mention context when you press `<leader>aa`
-
-The server starts automatically on plugin setup and cleans up on exit.
+- 10 editor tools (openFile, getDiagnostics, openDiff, etc.)
+- Live selection tracking broadcast to Claude
+- @mention context sending
+- Auto-refresh with diff highlights when Claude edits files
+- System prompt dynamically built from tool definitions
 
 ## License
 
