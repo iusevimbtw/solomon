@@ -134,18 +134,23 @@ function M.start()
     M.quit()
   end
 
-  -- Try unstaged changes first
+  -- Try unstaged changes first (includes untracked files)
   local diff = vim.fn.system({ "git", "diff", "-U3", "--no-color" })
   local source = "unstaged"
+  local has_unstaged = vim.v.shell_error == 0 and diff and vim.trim(diff) ~= ""
 
-  -- If no unstaged, try staged
-  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+  -- Check for untracked files alongside unstaged changes
+  local untracked = M._get_untracked_files()
+  local has_untracked = #untracked > 0
+
+  -- If no unstaged changes and no untracked files, try staged
+  if not has_unstaged and not has_untracked then
     diff = vim.fn.system({ "git", "diff", "--staged", "-U3", "--no-color" })
     source = "staged"
   end
 
   -- If no staged, try unpushed commits vs remote
-  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+  if source ~= "unstaged" and (vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "") then
     -- Find the upstream branch
     local upstream = vim.trim(vim.fn.system({ "git", "rev-parse", "--abbrev-ref", "@{u}" }))
     if vim.v.shell_error == 0 and upstream ~= "" then
@@ -154,18 +159,31 @@ function M.start()
     end
   end
 
-  if vim.v.shell_error ~= 0 or not diff or vim.trim(diff) == "" then
+  local hunks = {}
+  if diff and vim.trim(diff) ~= "" then
+    hunks = M._parse_hunks(diff)
+  end
+
+  -- Append untracked (new) files as synthetic hunks for unstaged source
+  if source == "unstaged" and has_untracked then
+    local new_file_hunks = M._make_new_file_hunks(untracked)
+    vim.list_extend(hunks, new_file_hunks)
+  end
+
+  if #hunks == 0 then
     vim.notify("[solomon] No changes to review (checked unstaged, staged, and unpushed)", vim.log.levels.INFO)
     return
   end
 
-  local hunks = M._parse_hunks(diff)
-  if #hunks == 0 then
-    vim.notify("[solomon] No hunks found in diff", vim.log.levels.INFO)
-    return
+  local new_count = 0
+  for _, h in ipairs(hunks) do
+    if h.is_new_file then new_count = new_count + 1 end
   end
-
-  vim.notify(string.format("[solomon] Reviewing %d %s hunks", #hunks, source), vim.log.levels.INFO)
+  local msg = string.format("[solomon] Reviewing %d %s hunks", #hunks, source)
+  if new_count > 0 then
+    msg = msg .. string.format(" (%d new files)", new_count)
+  end
+  vim.notify(msg, vim.log.levels.INFO)
 
   M._state = {
     hunks = hunks,
@@ -256,11 +274,10 @@ end
 function M._show_info_bar(hunk)
   M._close_info_bar()
 
-  local total = #M._state.hunks
-  local current = M._state.current
+  local source_label = hunk.is_new_file and "new file" or M._state.source
   local info_text = string.format(
     " %s [%d/%d] (%s)  y: accept | n: reject | e: edit | a: ask | s: skip | q: quit ",
-    hunk.file, M._state.reviewed + 1, M._state.total, M._state.source
+    hunk.file, M._state.reviewed + 1, M._state.total, source_label
   )
 
   local buf = vim.api.nvim_create_buf(false, true)
@@ -343,8 +360,14 @@ function M.accept()
   local action_desc = "Accepted"
 
   if source == "unstaged" then
-    -- Stage the hunk
-    local result = vim.fn.system({ "git", "apply", "--cached", "-" }, hunk.patch)
+    local result
+    if hunk.is_new_file then
+      -- Stage the entire new file
+      result = vim.fn.system({ "git", "add", "--", hunk.file })
+    else
+      -- Stage the hunk
+      result = vim.fn.system({ "git", "apply", "--cached", "-" }, hunk.patch)
+    end
     if vim.v.shell_error ~= 0 then
       vim.notify("[solomon] Failed to stage hunk: " .. vim.trim(result), vim.log.levels.ERROR)
       return
@@ -377,7 +400,16 @@ function M.reject()
   local result
 
   if source == "unstaged" then
-    result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
+    if hunk.is_new_file then
+      -- Delete the new file
+      local ok = vim.fn.delete(hunk.file)
+      if ok ~= 0 then
+        vim.notify("[solomon] Failed to delete new file: " .. hunk.file, vim.log.levels.ERROR)
+        return
+      end
+    else
+      result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
+    end
   elseif source == "staged" then
     -- Unstage the hunk (remove from index)
     result = vim.fn.system({ "git", "apply", "--cached", "-R", "-" }, hunk.patch)
@@ -386,8 +418,8 @@ function M.reject()
     result = vim.fn.system({ "git", "apply", "-R", "-" }, hunk.patch)
   end
 
-  if vim.v.shell_error ~= 0 then
-    vim.notify("[solomon] Failed to revert hunk: " .. vim.trim(result or ""), vim.log.levels.ERROR)
+  if result and vim.v.shell_error ~= 0 then
+    vim.notify("[solomon] Failed to revert hunk: " .. vim.trim(result), vim.log.levels.ERROR)
     return
   end
 
@@ -501,6 +533,58 @@ function M.quit()
 
   M._close_diff_ui()
   M._state = nil
+end
+
+--- Get untracked files (new files not yet added to git).
+---@return string[]
+function M._get_untracked_files()
+  local output = vim.fn.system({ "git", "ls-files", "--others", "--exclude-standard" })
+  if vim.v.shell_error ~= 0 or not output or vim.trim(output) == "" then
+    return {}
+  end
+  local files = vim.split(vim.trim(output), "\n", { plain = true })
+  -- Filter out empty strings
+  return vim.tbl_filter(function(f) return f ~= "" end, files)
+end
+
+--- Create synthetic hunks for new (untracked) files.
+---@param files string[] List of untracked file paths
+---@return solomon.Hunk[]
+function M._make_new_file_hunks(files)
+  local hunks = {}
+  for _, file in ipairs(files) do
+    local content = vim.fn.readfile(file)
+    if content and #content > 0 then
+      local diff_lines = {}
+      for _, line in ipairs(content) do
+        table.insert(diff_lines, "+" .. line)
+      end
+
+      local header = string.format("@@ -0,0 +1,%d @@", #content)
+      local patch_lines = {
+        "diff --git a/" .. file .. " b/" .. file,
+        "new file mode 100644",
+        "--- /dev/null",
+        "+++ b/" .. file,
+        header,
+      }
+      vim.list_extend(patch_lines, diff_lines)
+      table.insert(patch_lines, "") -- trailing newline
+
+      table.insert(hunks, {
+        file = file,
+        header = header,
+        old_start = 0,
+        old_count = 0,
+        new_start = 1,
+        new_count = #content,
+        diff_lines = diff_lines,
+        patch = table.concat(patch_lines, "\n"),
+        is_new_file = true,
+      })
+    end
+  end
+  return hunks
 end
 
 --- Check if review mode is active.

@@ -182,6 +182,81 @@ describe("solomon.review", function()
     end)
   end)
 
+  describe("_make_new_file_hunks", function()
+    it("creates synthetic hunks for new files", function()
+      -- Create a temp file to read
+      local tmpfile = os.tmpname()
+      local f = io.open(tmpfile, "w")
+      f:write("line1\nline2\nline3\n")
+      f:close()
+
+      local hunks = review._make_new_file_hunks({ tmpfile })
+      assert.equals(1, #hunks)
+      assert.equals(tmpfile, hunks[1].file)
+      assert.is_true(hunks[1].is_new_file)
+      assert.equals(0, hunks[1].old_start)
+      assert.equals(0, hunks[1].old_count)
+      assert.equals(1, hunks[1].new_start)
+      assert.equals(3, hunks[1].new_count)
+      assert.equals(3, #hunks[1].diff_lines)
+      assert.equals("+line1", hunks[1].diff_lines[1])
+      assert.equals("+line2", hunks[1].diff_lines[2])
+      assert.equals("+line3", hunks[1].diff_lines[3])
+      -- Patch should contain new file mode header
+      assert.is_truthy(hunks[1].patch:find("new file mode"))
+      assert.is_truthy(hunks[1].patch:find("--- /dev/null"))
+
+      os.remove(tmpfile)
+    end)
+
+    it("returns empty table for empty file list", function()
+      local hunks = review._make_new_file_hunks({})
+      assert.equals(0, #hunks)
+    end)
+
+    it("handles multiple files", function()
+      local files = {}
+      for i = 1, 3 do
+        local tmpfile = os.tmpname()
+        local f = io.open(tmpfile, "w")
+        f:write("content" .. i .. "\n")
+        f:close()
+        table.insert(files, tmpfile)
+      end
+
+      local hunks = review._make_new_file_hunks(files)
+      assert.equals(3, #hunks)
+      for i, h in ipairs(hunks) do
+        assert.is_true(h.is_new_file)
+        assert.equals(files[i], h.file)
+      end
+
+      for _, f in ipairs(files) do
+        os.remove(f)
+      end
+    end)
+  end)
+
+  describe("_extract_content with new file hunk", function()
+    it("returns empty old and full new for new file", function()
+      local hunk = {
+        is_new_file = true,
+        diff_lines = {
+          "+line1",
+          "+line2",
+          "+line3",
+        },
+      }
+
+      local old, new = review._extract_content(hunk)
+      assert.equals(0, #old)
+      assert.equals(3, #new)
+      assert.equals("line1", new[1])
+      assert.equals("line2", new[2])
+      assert.equals("line3", new[3])
+    end)
+  end)
+
   describe("is_active", function()
     it("returns false when not in review", function()
       assert.is_false(review.is_active())
