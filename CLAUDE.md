@@ -77,7 +77,7 @@ All actions work in both normal mode (treesitter selects enclosing function) and
 | `y` | Accept (stage hunk) |
 | `n` | Reject (revert hunk) |
 | `o` | Open file at hunk location |
-| `k` | Ask Claude about the hunk |
+| `ak` | Ask Claude about the hunk |
 | `s` | Skip to next hunk |
 | `q` | Quit review |
 

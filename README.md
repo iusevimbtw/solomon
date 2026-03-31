@@ -140,7 +140,7 @@ All code actions work in both normal mode (treesitter selects enclosing function
 | `y` | Accept (stage hunk) |
 | `n` | Reject (revert hunk) |
 | `o` | Open file at hunk |
-| `k` | Ask Claude about hunk |
+| `ak` | Ask Claude about hunk |
 | `s` | Skip to next |
 | `q` | Quit review |
 
