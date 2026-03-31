@@ -298,14 +298,39 @@ function M._show_info_bar(hunk)
 
   vim.api.nvim_set_option_value("winhl", "Normal:Comment,FloatBorder:Comment", { win = win })
 
+  -- Reposition on resize
+  local augroup = vim.api.nvim_create_augroup("solomon_review_resize", { clear = true })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = augroup,
+    callback = function()
+      if not win or not vim.api.nvim_win_is_valid(win) then
+        pcall(vim.api.nvim_del_augroup_by_id, augroup)
+        return
+      end
+      local new_width = math.min(#info_text + 2, vim.o.columns - 4)
+      vim.api.nvim_win_set_config(win, {
+        relative = "editor",
+        row = vim.o.lines - 3,
+        col = math.floor((vim.o.columns - new_width) / 2),
+        width = new_width,
+        height = 1,
+      })
+    end,
+  })
+
   M._state.info_buf = buf
   M._state.info_win = win
+  M._state.info_augroup = augroup
 end
 
 --- Close the info bar.
 function M._close_info_bar()
   if not M._state then
     return
+  end
+  if M._state.info_augroup then
+    pcall(vim.api.nvim_del_augroup_by_id, M._state.info_augroup)
+    M._state.info_augroup = nil
   end
   if M._state.info_win and vim.api.nvim_win_is_valid(M._state.info_win) then
     vim.api.nvim_win_close(M._state.info_win, true)
