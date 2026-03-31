@@ -170,6 +170,8 @@ function M.start()
   M._state = {
     hunks = hunks,
     current = 1,
+    total = #hunks,
+    reviewed = 0,
     source = source,
     orig_buf = nil,
     new_buf = nil,
@@ -233,7 +235,7 @@ function M._show_current_hunk()
   local keymaps = {
     { "y", M.accept, "Yes (accept hunk)" },
     { "n", M.reject, "No (reject hunk)" },
-    { "e", M.explain, "Explain this hunk" },
+    { "e", M.edit, "Edit (open file at hunk)" },
     { "a", M.ask, "Ask Claude about this hunk" },
     { "s", M.next_hunk, "Skip to next hunk" },
     { "q", M.quit, "Quit review" },
@@ -257,8 +259,8 @@ function M._show_info_bar(hunk)
   local total = #M._state.hunks
   local current = M._state.current
   local info_text = string.format(
-    " %s [%d/%d] (%s)  y: accept | n: reject | e: explain | a: ask | s: skip | q: quit ",
-    hunk.file, current, total, M._state.source
+    " %s [%d/%d] (%s)  y: accept | n: reject | e: edit | a: ask | s: skip | q: quit ",
+    hunk.file, M._state.reviewed + 1, M._state.total, M._state.source
   )
 
   local buf = vim.api.nvim_create_buf(false, true)
@@ -397,8 +399,8 @@ function M.reject()
   M._advance()
 end
 
---- Explain the current hunk — sends directly to Claude, shows response popup.
-function M.explain()
+--- Edit — open the file at the hunk location and exit review.
+function M.edit()
   if not M._state then
     return
   end
@@ -408,12 +410,16 @@ function M.explain()
     return
   end
 
-  local diff_text = hunk.header .. "\n" .. table.concat(hunk.diff_lines, "\n")
-  local prompt = "Explain this code change. What does it do and why?\n\n"
-    .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
+  local filepath = hunk.file
+  local line = hunk.new_start
 
   M._close_diff_ui()
-  require("solomon.actions")._send_to_claude(prompt, nil, { keymaps = {} })
+  M._state = nil
+
+  -- Open the file and jump to the hunk
+  vim.cmd.edit(vim.fn.fnameescape(filepath))
+  pcall(vim.api.nvim_win_set_cursor, 0, { line, 0 })
+  vim.cmd("normal! zz")
 end
 
 --- Ask Claude about the current hunk — opens prompt window with diff as context.
@@ -463,19 +469,6 @@ function M.next_hunk()
   end
 end
 
---- Move to the previous hunk.
-function M.prev_hunk()
-  if not M._state then
-    return
-  end
-  if M._state.current > 1 then
-    M._state.current = M._state.current - 1
-    M._show_current_hunk()
-  else
-    vim.notify("[solomon] First hunk", vim.log.levels.INFO)
-  end
-end
-
 --- Advance to next hunk, or finish if none left.
 function M._advance()
   if not M._state then
@@ -484,6 +477,7 @@ function M._advance()
 
   -- Remove the current hunk from the list (it's been handled)
   table.remove(M._state.hunks, M._state.current)
+  M._state.reviewed = M._state.reviewed + 1
 
   if #M._state.hunks == 0 then
     vim.notify("[solomon] Review complete — all hunks reviewed", vim.log.levels.INFO)

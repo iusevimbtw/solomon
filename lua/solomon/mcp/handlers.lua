@@ -138,7 +138,7 @@ function M.get_tool_handlers()
     openFile = M.handle_open_file,
     getOpenEditors = M.handle_get_open_editors,
     getCurrentSelection = M.handle_get_current_selection,
-    getLatestSelection = M.handle_get_current_selection, -- same as current
+    getLatestSelection = M.handle_get_latest_selection,
     getDiagnostics = M.handle_get_diagnostics,
     openDiff = M.handle_open_diff,
     closeAllDiffTabs = M.handle_close_all_diff_tabs,
@@ -202,6 +202,19 @@ function M.handle_get_current_selection()
       isEmpty = true,
     },
   }
+end
+
+--- Get the latest tracked selection (may include visual selection text from before switching to Claude).
+function M.handle_get_latest_selection()
+  local ok, sel_mod = pcall(require, "solomon.selection")
+  if ok then
+    local tracked = sel_mod.get_latest()
+    if tracked then
+      return tracked
+    end
+  end
+  -- Fallback to current selection
+  return M.handle_get_current_selection()
 end
 
 --- Get LSP diagnostics.

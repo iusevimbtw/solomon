@@ -78,10 +78,6 @@ function M._highlight_changes()
 
   -- Parse @@ headers to find changed line ranges
   local changed_lines = {}
-  for header in diff:gmatch("@@ %-%d+,?%d* %+(%d+),?(%d*) @@") do
-    -- This won't work with gmatch returning two captures properly, use a different approach
-  end
-
   for line in diff:gmatch("[^\n]+") do
     local start, count = line:match("^@@ %-%d+,?%d* %+(%d+),?(%d*) @@")
     if start then

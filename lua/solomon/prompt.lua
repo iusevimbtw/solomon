@@ -8,8 +8,7 @@ local M = {}
 ---@field filetype string Filetype for syntax highlighting
 ---@field filename string Source filename
 ---@field start_line integer|nil Starting line number
----@field action_prompt string|nil Pre-filled system instruction (for predefined actions)
----@field on_submit fun(prompt: string, context: string) Called when user submits
+---@field on_submit fun(prompt: string) Called when user submits
 
 --- Open the prompt window with code context and input area.
 ---@param opts solomon.PromptOpts
@@ -117,15 +116,6 @@ function M.open(opts)
   -- Set line number offset to match source file
   if opts.start_line and opts.start_line > 1 then
     vim.wo[context_popup.winid].numberwidth = #tostring(opts.start_line + #opts.context_lines) + 1
-  end
-
-  -- Pre-fill action prompt if provided
-  if opts.action_prompt then
-    vim.api.nvim_buf_set_lines(input_popup.bufnr, 0, -1, false, { opts.action_prompt })
-    -- Place cursor at end
-    local line_count = vim.api.nvim_buf_line_count(input_popup.bufnr)
-    local last_line = vim.api.nvim_buf_get_lines(input_popup.bufnr, line_count - 1, line_count, false)[1]
-    pcall(vim.api.nvim_win_set_cursor, input_popup.winid, { line_count, #last_line })
   end
 
   -- Start in insert mode
