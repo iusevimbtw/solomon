@@ -33,7 +33,7 @@ Optional: [snacks.nvim](https://github.com/folke/snacks.nvim), [lualine.nvim](ht
 
 ```lua
 {
-  "your-username/solomon.nvim",
+  "iusevimbtw/solomon.nvim",
   dependencies = {
     "MunifTanjim/nui.nvim",
   },

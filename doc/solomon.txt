@@ -62,7 +62,7 @@ Optional:~
 With lazy.nvim:~
 >lua
   {
-    "your-username/solomon.nvim",
+    "iusevimbtw/solomon.nvim",
     dependencies = {
       "MunifTanjim/nui.nvim",
     },
