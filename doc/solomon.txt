@@ -200,7 +200,7 @@ Review keymaps:~
   `y`   Accept (stage hunk)
   `n`   Reject (revert hunk)
   `e`   Edit (open file at hunk location, exit review)
-  `a`   Ask Claude about this hunk (opens prompt)
+  `k`   Ask Claude about this hunk (opens prompt)
   `s`   Skip to next hunk
   `q`   Quit review
 

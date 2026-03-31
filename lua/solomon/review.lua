@@ -254,7 +254,7 @@ function M._show_current_hunk()
     { "y", M.accept, "Yes (accept hunk)" },
     { "n", M.reject, "No (reject hunk)" },
     { "e", M.edit, "Edit (open file at hunk)" },
-    { "a", M.ask, "Ask Claude about this hunk" },
+    { "k", M.ask, "Ask Claude about this hunk" },
     { "s", M.next_hunk, "Skip to next hunk" },
     { "q", M.quit, "Quit review" },
   }
@@ -276,7 +276,7 @@ function M._show_info_bar(hunk)
 
   local source_label = hunk.is_new_file and "new file" or M._state.source
   local info_text = string.format(
-    " %s [%d/%d] (%s)  y: accept | n: reject | e: edit | a: ask | s: skip | q: quit ",
+    " %s [%d/%d] (%s)  y: accept | n: reject | e: edit | k: ask | s: skip | q: quit ",
     hunk.file, M._state.reviewed + 1, M._state.total, source_label
   )
 
