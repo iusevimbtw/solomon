@@ -507,7 +507,14 @@ function M.ask()
         .. "If the question is asking for a modification, provide the updated code in a single code block.\n\n"
         .. "Question: " .. user_prompt .. "\n\n"
         .. "File: " .. hunk.file .. "\n```diff\n" .. diff_text .. "\n```"
-      require("solomon.actions")._send_to_claude(full_prompt, nil, { keymaps = {} })
+      require("solomon.actions")._send_to_claude(full_prompt, nil, {
+        keymaps = {},
+        on_close = function()
+          if M._state then
+            M._show_current_hunk()
+          end
+        end,
+      })
     end,
     on_cancel = function()
       -- Return to the review hunk

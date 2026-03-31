@@ -102,6 +102,7 @@ function M.open(source, opts)
     lines = {},
     job = nil,
     source = source,
+    on_close = opts.on_close,
     _thinking = true,
     _spinner_timer = nil,
   }
@@ -258,6 +259,7 @@ end
 function M.close()
   local win = M.current
   if win then
+    local on_close = win.on_close
     if win.job then
       win.job.cancel()
     end
@@ -272,6 +274,9 @@ function M.close()
       win.popup:unmount()
     end)
     M.current = nil
+    if on_close then
+      on_close()
+    end
   end
 end
 
