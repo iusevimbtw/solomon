@@ -236,6 +236,11 @@ function M.show_result_info(result)
   else
     M.set_status("Solomon (done)")
   end
+
+  -- Scroll to top now that print mode response is complete
+  if M.current and M.current.popup.winid and vim.api.nvim_win_is_valid(M.current.popup.winid) then
+    pcall(vim.api.nvim_win_set_cursor, M.current.popup.winid, { 1, 0 })
+  end
 end
 
 --- Cancel the current streaming request.
